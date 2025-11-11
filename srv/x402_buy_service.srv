@@ -1,0 +1,13 @@
+string endpoint
+string method
+string payload
+string headers_json
+float64 amount
+string asset_symbol
+string payer_account
+---
+bool success
+string response_body
+string error_message
+string payment_signature
+

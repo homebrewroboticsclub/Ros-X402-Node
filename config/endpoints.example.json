@@ -1,0 +1,136 @@
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 18080,
+  "require_https": false,
+  "endpoints": [
+    {
+      "path": "/health",
+      "http_method": "GET",
+      "description": "External integration health check.",
+      "ros_action": {
+        "type": "python_call",
+        "module": "rospy_x402.health",
+        "callable": "get_health_status"
+      }
+    },
+    {
+      "path": "/api/v1/robot/move_demo",
+      "http_method": "POST",
+      "description": "Trigger a sample motion via MotionManager for demonstration purposes.",
+      "ros_action": {
+        "type": "python_call",
+        "module": "rospy_x402.demo_actions",
+        "callable": "move_demo"
+      },
+      "x402_pricing": {
+        "amount": 0.00005,
+        "asset_symbol": "SOL",
+        "receiver_account": "",
+        "payment_window_sec": 180
+      },
+      "metadata": {
+        "requestSchema": {
+          "type": "object",
+          "description": "Optional payload allowing you to pick a custom action group.",
+          "required": [],
+          "properties": {
+            "demo_name": {
+              "type": "string",
+              "description": "Action group name passed to MotionManager.run_action (defaults to 'wave')."
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/api/v1/robot/buy_cola_demo",
+      "http_method": "POST",
+      "description": "Paid demo endpoint that drives the robot forward for 5 seconds to deliver cola cans.",
+      "ros_action": {
+        "type": "python_call",
+        "module": "rospy_x402.demo_actions",
+        "callable": "buy_cola_demo"
+      },
+      "x402_pricing": {
+        "amount": 0.000075,
+        "asset_symbol": "SOL",
+        "receiver_account": "",
+        "payment_window_sec": 240
+      },
+      "metadata": {
+        "requestSchema": {
+          "type": "object",
+          "required": [
+            "quantity",
+            "buyer",
+            "seller"
+          ],
+          "properties": {
+            "quantity": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of cola cans to purchase."
+            },
+            "buyer": {
+              "type": "object",
+              "required": [
+                "lat",
+                "lng"
+              ],
+              "properties": {
+                "lat": {
+                  "type": "number"
+                },
+                "lng": {
+                  "type": "number"
+                }
+              },
+              "description": "Latitude/longitude of the buyer."
+            },
+            "seller": {
+              "type": "object",
+              "required": [
+                "lat",
+                "lng"
+              ],
+              "properties": {
+                "lat": {
+                  "type": "number"
+                },
+                "lng": {
+                  "type": "number"
+                }
+              },
+              "description": "Latitude/longitude of the seller."
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/api/v1/robot/shoot_demo",
+      "http_method": "POST",
+      "description": "Paid endpoint that fires the robot fire control system once.",
+      "ros_action": {
+        "type": "python_call",
+        "module": "rospy_x402.demo_actions",
+        "callable": "shoot_demo"
+      },
+      "x402_pricing": {
+        "amount": 0.001,
+        "asset_symbol": "SOL",
+        "receiver_account": "",
+        "payment_window_sec": 180
+      },
+      "metadata": {
+        "requestSchema": {
+          "type": "object",
+          "description": "No payload required; call with an empty JSON object to fire once.",
+          "required": [],
+          "properties": {}
+        }
+      }
+    }
+  ]
+}
+
