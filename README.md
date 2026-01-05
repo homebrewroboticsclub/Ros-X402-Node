@@ -487,3 +487,6 @@ Response fields:
 - **Missing `solana` package**: Outgoing payments raise `PaymentSubmissionError`. Install `solana` via `pip`.
 - **Payment verification fails**: Ensure the RPC endpoint is reachable and returns confirmed transactions. Increase `payment_window_sec` or adjust `poll_interval_sec` if the network is slow.
 - **catkin build failures**: Verify `message_generation`, `message_runtime`, and Python dependencies are installed, then re-source `devel/setup.bash`.
+
+## Partnerships
+- For partnerships or business proposals, contact us at brewie@homebrew.build
