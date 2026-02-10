@@ -2,6 +2,8 @@
   "listen_host": "0.0.0.0",
   "listen_port": 18080,
   "require_https": false,
+  "base_url": null,
+  "x402_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
   "endpoints": [
     {
       "path": "/health",

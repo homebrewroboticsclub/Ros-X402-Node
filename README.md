@@ -110,12 +110,16 @@ If you do not pass the `~service_receiver_account` parameter, the derived public
 - `ros_action`: Defines how to invoke the robot functionality. The example calls `rospy_x402.demo_actions.move_demo`, which internally uses `MotionManager` and defaults to the `wave` action group (you can override it by sending `{"demo_name": "<your_action>"}` in the request body).
 - `x402_pricing`: Enables payment enforcement. `receiver_account` can be omitted to use the node’s default account.
 - `facilitator_url`: Optional URL of an external facilitator service; omit it to rely on the built-in on-chain verification.
+- `base_url`: Optional base URL for this server (e.g. `https://robot.example.com`). Used for discovery and 402 `resource.url`. If omitted, derived from the `Host` header.
+- `x402_network`: Optional CAIP-2 network identifier (e.g. `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`). Used in x402 V2 `accepts[].network`.
 - Omit `x402_pricing` entirely to expose a free endpoint.
+
+Paid endpoints and discovery conform to **x402 V2** (x402scan/Bazaar compatible). Discovery is available at **`GET /.well-known/x402`** and returns all endpoints as resources with `accepts` for paid ones.
 
 ### How payment verification works
 
-1. When a client first hits a paid endpoint without a valid reference, the server calls `X402Client.create_payment_session()` and returns HTTP 402 with a JSON payload containing `reference`, `amount`, `asset`, `receiver`, and `expires_in_sec`.
-2. The client transfers the requested amount (on Solana by default) and retries the call, now including the `X-X402-Reference` header (or `x402_reference` field in the body).
+1. When a client first hits a paid endpoint without a valid reference, the server calls `X402Client.create_payment_session()` and returns HTTP 402 with an **x402 V2** JSON payload: `x402Version: 2`, `accepts[]` (with `amount`, `payTo`, `maxTimeoutSeconds`, `asset`, and `extra.reference`), and optional `resource` and `extensions.bazaar`.
+2. The client transfers the requested amount (on Solana by default) to `accepts[0].payTo` and retries the call with the **`X-X402-Reference`** header set to `accepts[0].extra.reference` (or `x402_reference` in the body).
 3. The server invokes `X402Client.verify_payment()`:
    - Fetches the latest confirmed signatures for the receiver address.
    - Retrieves each transaction, scanning for a `transfer` instruction whose `destination` matches the receiver and whose lamports exceed the expected amount.
@@ -475,6 +479,29 @@ Response fields:
 - The private key is requested interactively through `getpass` and stored only in memory. Restarting the node requires re-entering the key.
 - Keep the JSON configuration files secure. They control which Python callables can be invoked via REST.
 - Always use HTTPS (reverse proxy or VPN) when exposing the REST API over untrusted networks.
+
+## x402 Bazaar CLI (configure robot as payer)
+
+To discover and configure **outgoing** payments (robot pays external x402 services), use the **x402-bazaar** console utility:
+
+```bash
+# List discoverable x402 resources (default: CDP Coinbase discovery API)
+x402-bazaar search --limit 20
+
+# Show payment requirements for a resource URL
+x402-bazaar show https://api.example.com/v1/paid-action
+
+# Generate config snippet and rosservice call example
+x402-bazaar configure https://api.example.com/v1/paid-action -o bazaar_config.json
+```
+
+After `configure`, use the printed `rosservice call /x402_buy_service ...` with the indicated `endpoint`, `amount`, and `payer_account` (payTo) to let the robot pay and call that service. See `docs/X402_PROTOCOL.md` for the exact exchange schema.
+
+## Documentation
+
+- **`docs/ARCHITECTURE.md`**: Current architecture for developers and agents (components, data flow, extension points).
+- **`docs/X402_PROTOCOL.md`**: Single source of truth for x402 V2 (402 response, discovery, verification, config).
+- **`docs/ARCHITECTURE_DIAGRAMS.md`**: Mermaid diagrams for node architecture and payment verification flow.
 
 ## Development Hints
 

@@ -37,6 +37,10 @@ class ServerConfig:
     listen_port: int = 18080
     require_https: bool = False
     facilitator_url: Optional[str] = None
+    """Optional base URL for this server (e.g. https://robot.example.com). Used for discovery and resource URLs."""
+    base_url: Optional[str] = None
+    """CAIP-2 network identifier (e.g. solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp). Used in x402 V2 accepts[].network."""
+    x402_network: Optional[str] = None
     endpoints: List[EndpointConfig] = field(default_factory=list)
 
 
@@ -88,6 +92,8 @@ def load_config(path: str) -> ServerConfig:
         listen_port=int(raw.get("listen_port", 18080)),
         require_https=bool(raw.get("require_https", False)),
         facilitator_url=raw.get("facilitator_url"),
+        base_url=raw.get("base_url"),
+        x402_network=raw.get("x402_network"),
         endpoints=endpoints,
     )
 
