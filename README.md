@@ -487,6 +487,19 @@ To discover and configure **outgoing** payments (robot pays external x402 servic
 ```bash
 # List discoverable x402 resources (default: CDP Coinbase discovery API)
 x402-bazaar search --limit 20
+x402-bazaar search -n 5 --offset 10      # pagination
+
+# Search by name/type: client-side filter on description, URL, metadata (e.g. LLM, sentiment, storage)
+x402-bazaar search -n 200 -f "sentiment"   # match "sentiment" in description or URL
+x402-bazaar search -n 500 --filter "LLM"   # use larger -n to scan more of the catalog
+# Optional: pass through to discovery API if supported
+x402-bazaar search -n 20 -q "keyword"      # --query to API
+x402-bazaar search --type http --network base
+
+# Shortcuts: show details or generate config for result N (1-based) from the list
+x402-bazaar search -n 10 -s 3            # list 10, then show 402 details for #3
+x402-bazaar search -n 10 -c 1 -o cfg.json # list 10, then generate config for #1
+x402-bazaar search -n 100 -f "sentiment" -s 1   # filter then show first match
 
 # Show payment requirements for a resource URL
 x402-bazaar show https://api.example.com/v1/paid-action
