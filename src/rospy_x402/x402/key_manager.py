@@ -1,4 +1,5 @@
 import getpass
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -29,6 +30,15 @@ class KeyMaterial:
 class KeyManager:
     def __init__(self) -> None:
         self._key_material: Optional[KeyMaterial] = None
+
+    def load_from_env(self, env_var: str = "SOLANA_PRIVATE_KEY") -> Optional[KeyMaterial]:
+        """Load key from environment. Returns None if not set or empty."""
+        secret_b58 = (os.environ.get(env_var) or "").strip()
+        if not secret_b58:
+            return None
+        key_material = self.load_from_base58(secret_b58)
+        self._key_material = key_material
+        return key_material
 
     def load_from_prompt(self) -> KeyMaterial:
         secret_input = getpass.getpass(

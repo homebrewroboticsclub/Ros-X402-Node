@@ -11,6 +11,30 @@ from typing import Dict, Optional
 
 import rospkg
 import rospy
+
+# Load .env before reading RPC/key so env vars are available in main()
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    paths = [
+        os.path.join(os.getcwd(), ".env"),
+        os.path.join(os.path.expanduser("~"), ".rospy_x402.env"),
+    ]
+    try:
+        rospack = rospkg.RosPack()
+        pkg_path = rospack.get_path("rospy_x402")
+        paths.insert(0, os.path.join(pkg_path, "config", ".env"))
+    except (rospkg.ResourceNotFound, rospkg.ROSPkgException):
+        pass
+    for path in paths:
+        if os.path.isfile(path):
+            load_dotenv(path, override=False)
+            break
+
+
+_load_dotenv()
 from rospy_x402.server import X402RestServer
 from rospy_x402.x402 import (
     KeyManager,
@@ -214,15 +238,22 @@ def main() -> None:
         package_path = rospack.get_path("rospy_x402")
         config_path = os.path.join(package_path, "config", "endpoints.example.json")
 
-    rpc_endpoint = rospy.get_param(
-        "~solana_rpc_endpoint", "https://api.mainnet-beta.solana.com"
-    )
+    # RPC: rosparam overrides; else Helius if HELIUS_API_KEY set; else default public
+    default_rpc = "https://api.mainnet-beta.solana.com"
+    helius_key = (os.environ.get("HELIUS_API_KEY") or "").strip()
+    if helius_key:
+        default_rpc = f"https://mainnet.helius-rpc.com/?api-key={helius_key}"
+    rpc_endpoint = rospy.get_param("~solana_rpc_endpoint", default_rpc)
+    rospy.loginfo("Solana RPC: %s", rpc_endpoint.split("?")[0] + ("... (Helius)" if "helius" in rpc_endpoint.lower() else ""))
+
     key_manager = KeyManager()
-    try:
-        key_material = key_manager.load_from_prompt()
-    except ValueError as exc:
-        rospy.logerr("Failed to load private key: %s", exc)
-        sys.exit(1)
+    key_material = key_manager.load_from_env()
+    if not key_material:
+        try:
+            key_material = key_manager.load_from_prompt()
+        except ValueError as exc:
+            rospy.logerr("Failed to load private key: %s", exc)
+            sys.exit(1)
 
     receiver_account = rospy.get_param(
         "~service_receiver_account", key_material.public_key_b58

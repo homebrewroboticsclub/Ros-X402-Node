@@ -13,7 +13,8 @@ All runtime logs and comments are in English, while the ROS package name follows
 - **Configurable HTTP endpoints**: Define REST routes, link them to Python callables, and attach payment requirements through JSON configs.
 - **Payment enforcement**: Automatically create payment sessions, monitor Solana blockchain transfers, and require valid signatures for execution.
 - **Outgoing payments**: Allow the robot to pay external parties directly via Solana when requested through the ROS service.
-- **In-memory key handling**: The node prompts for a Solana private key on startup and keeps it exclusively in RAM.
+- **In-memory key handling**: The node loads the Solana private key from `.env` (if `SOLANA_PRIVATE_KEY` is set) or prompts once on startup; the key is kept only in RAM.
+- **Helius RPC by default**: If `HELIUS_API_KEY` is set in `.env`, the node uses Helius mainnet RPC; otherwise the public endpoint or `~solana_rpc_endpoint` is used.
 - **Library-first architecture**: All x402/Solana logic is separated into clean modules for reuse in other projects.
 
 ## Prerequisites
@@ -22,13 +23,13 @@ All runtime logs and comments are in English, while the ROS package name follows
 - Python dependencies:
   - `python3-nacl` (installed via `apt` or `pip`).
   - `solana` (installed via `pip`) for outgoing payments. If absent, the node can still receive payments but cannot send them.
-- Network access to a Solana RPC endpoint (default: `https://api.mainnet-beta.solana.com`). You can use a custom endpoint or a private RPC Gateway if required.
+- Network access to a Solana RPC endpoint. Default: **Helius** if `HELIUS_API_KEY` is set in `.env`, otherwise `https://api.mainnet-beta.solana.com`. Override via `~solana_rpc_endpoint` when launching.
 
 ### Installing Python dependencies
 
 ```bash
 sudo apt-get install python3-nacl
-pip3 install --user solana
+pip3 install --user solana python-dotenv
 ```
 
 Add `~/.local/bin` to your `PATH` if you use the `--user` flag for `pip`.
@@ -47,11 +48,29 @@ The package depends on `message_generation`, so ensure your workspace is sourced
 
 ## Launching the REST Server Node
 
+### Optional: `.env` for RPC and key (recommended)
+
+Copy `.env.example` to `.env` (e.g. in the package `config/` or in the current working directory) and set:
+
+- **`HELIUS_API_KEY`** — Helius API key. If set, the node uses `https://mainnet.helius-rpc.com/?api-key=...` as the default RPC (no need to pass `_solana_rpc_endpoint`).
+- **`SOLANA_PRIVATE_KEY`** — Base58 Solana wallet private key. If set, the node does not prompt for the key on startup.
+
+Keep `.env` out of version control (`cp .env.example .env` and add `.env` to `.gitignore`; the package already ignores `.env`). Restrict file permissions: `chmod 600 .env`.
+
 ```bash
-rosrun rospy_x402 x402_ex_server.py _config_path:=/path/to/endpoints.json _solana_rpc_endpoint:=https://api.mainnet-beta.solana.com
+cp .env.example config/.env
+# Edit config/.env: set HELIUS_API_KEY and SOLANA_PRIVATE_KEY
 ```
 
-At startup the node prompts for a **base58-encoded Solana private key**. The key is kept only in memory and is used to:
+### Run manually
+
+```bash
+rosrun rospy_x402 x402_ex_server.py
+# With .env: uses Helius (if key set) and no key prompt (if SOLANA_PRIVATE_KEY set)
+# Override: _config_path:=/path/to/endpoints.json _solana_rpc_endpoint:=https://...
+```
+
+If `SOLANA_PRIVATE_KEY` is not set, the node prompts once for a **base58-encoded Solana private key**. The key is kept only in memory and is used to:
 
 - Derive the default receiver account for incoming payments.
 - Sign transactions if the node must initiate outgoing payments.
@@ -61,7 +80,7 @@ If you do not pass the `~service_receiver_account` parameter, the derived public
 ### Important Parameters
 
 - `~config_path` *(string)*: Path to the JSON configuration that defines REST endpoints. Defaults to the bundled `config/endpoints.example.json`.
-- `~solana_rpc_endpoint` *(string)*: Solana RPC URL used for payment verification and transaction submission.
+- `~solana_rpc_endpoint` *(string)*: Solana RPC URL. Default: Helius mainnet if `HELIUS_API_KEY` is in `.env`, else `https://api.mainnet-beta.solana.com`.
 - `~service_receiver_account` *(string)*: Optional explicit Solana address to receive payments. Defaults to the public key derived from the private key.
 - `~service_asset_symbol` *(string)*: Asset ticker (default `SOL`).
 - `~service_payment_window_sec` *(int)*: Number of seconds to wait for an incoming payment (default `300`).
@@ -515,6 +534,10 @@ After `configure`, use the printed `rosservice call /x402_buy_service ...` with 
 - **`docs/ARCHITECTURE.md`**: Current architecture for developers and agents (components, data flow, extension points).
 - **`docs/X402_PROTOCOL.md`**: Single source of truth for x402 V2 (402 response, discovery, verification, config).
 - **`docs/ARCHITECTURE_DIAGRAMS.md`**: Mermaid diagrams for node architecture and payment verification flow.
+
+## Autostart with bringup
+
+The node is included in `ainex_bringup`’s `bringup.launch`. When you start the robot with that launch file, `x402_ex_server` starts automatically (Helius and key from `.env`, or prompt on first run).
 
 ## Development Hints
 

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- x402 REST server + buy service. Uses Helius RPC if HELIUS_API_KEY in .env; key from SOLANA_PRIVATE_KEY or prompt. -->
+  <node name="x402_ex_server" pkg="rospy_x402" type="x402_ex_server.py" output="screen" respawn="true" respawn_delay="2">
+    <!-- Override RPC if needed: _solana_rpc_endpoint:=https://... -->
+    <!-- Config: _config_path:=/path/to/endpoints.json (default: package config/endpoints.example.json) -->
+  </node>
+</launch>
