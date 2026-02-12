@@ -54,6 +54,7 @@ Copy `.env.example` to `.env` (e.g. in the package `config/` or in the current w
 
 - **`HELIUS_API_KEY`** — Helius API key. If set, the node uses `https://mainnet.helius-rpc.com/?api-key=...` as the default RPC (no need to pass `_solana_rpc_endpoint`).
 - **`SOLANA_PRIVATE_KEY`** — Base58 Solana wallet private key. If set, the node does not prompt for the key on startup.
+- **`ROSPY_X402_CONFIG`** *(optional)* — Path to endpoints JSON. Overrides the default `config/endpoints.example.json` when no `~config_path` rosparam is set.
 
 Keep `.env` out of version control (`cp .env.example .env` and add `.env` to `.gitignore`; the package already ignores `.env`). Restrict file permissions: `chmod 600 .env`.
 
@@ -535,9 +536,22 @@ After `configure`, use the printed `rosservice call /x402_buy_service ...` with 
 - **`docs/X402_PROTOCOL.md`**: Single source of truth for x402 V2 (402 response, discovery, verification, config).
 - **`docs/ARCHITECTURE_DIAGRAMS.md`**: Mermaid diagrams for node architecture and payment verification flow.
 
-## Autostart with bringup
+## Launching via roslaunch
 
-The node is included in `ainex_bringup`’s `bringup.launch`. When you start the robot with that launch file, `x402_ex_server` starts automatically (Helius and key from `.env`, or prompt on first run).
+To run the x402 node separately (handy for debugging):
+
+```bash
+roslaunch rospy_x402 x402_ex_server.launch
+```
+
+Or with overrides:
+
+```bash
+roslaunch rospy_x402 x402_ex_server.launch config_path:=/path/to/endpoints.json
+```
+
+The node is **not** included in `ainex_bringup` by default. Add it to your bringup or custom launch file if you want it to start with the robot.
+
 
 ## Development Hints
 
@@ -547,6 +561,8 @@ The node is included in `ainex_bringup`’s `bringup.launch`. When you start the
 
 ## Troubleshooting
 
+- **`.env` not loaded / still prompts for key / uses public RPC**: Place `.env` in the package root (`rospy_x402/.env`) or in `config/.env`. When run via roslaunch, the node uses `cwd=package root`, so `.env` next to `.env.example` is found. Ensure `python-dotenv` is installed: `pip install python-dotenv`.
+- **Duplicate node / "new node registered with same name"**: Do not run `rosrun` and `roslaunch` for the same node at the same time.
 - **Missing `solana` package**: Outgoing payments raise `PaymentSubmissionError`. Install `solana` via `pip`.
 - **Payment verification fails**: Ensure the RPC endpoint is reachable and returns confirmed transactions. Increase `payment_window_sec` or adjust `poll_interval_sec` if the network is slow.
 - **catkin build failures**: Verify `message_generation`, `message_runtime`, and Python dependencies are installed, then re-source `devel/setup.bash`.

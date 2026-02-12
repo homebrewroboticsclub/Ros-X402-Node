@@ -1,8 +1,11 @@
 <?xml version="1.0"?>
 <launch>
+  <arg name="config_path" default="" doc="Path to endpoints JSON. Overrides ROSPY_X402_CONFIG from .env."/>
+  <arg name="solana_rpc_endpoint" default="" doc="Solana RPC URL. Overrides Helius from HELIUS_API_KEY."/>
   <!-- x402 REST server + buy service. Uses Helius RPC if HELIUS_API_KEY in .env; key from SOLANA_PRIVATE_KEY or prompt. -->
-  <node name="x402_ex_server" pkg="rospy_x402" type="x402_ex_server.py" output="screen" respawn="true" respawn_delay="2">
-    <!-- Override RPC if needed: _solana_rpc_endpoint:=https://... -->
-    <!-- Config: _config_path:=/path/to/endpoints.json (default: package config/endpoints.example.json) -->
+  <!-- cwd=package root so .env is found when running via roslaunch. -->
+  <node name="x402_ex_server" pkg="rospy_x402" type="x402_ex_server.py" output="screen" respawn="true" respawn_delay="2" cwd="$(find rospy_x402)">
+    <param name="config_path" value="$(arg config_path)"/>
+    <param name="solana_rpc_endpoint" value="$(arg solana_rpc_endpoint)"/>
   </node>
 </launch>

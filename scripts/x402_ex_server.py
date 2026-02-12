@@ -25,6 +25,8 @@ def _load_dotenv() -> None:
     try:
         rospack = rospkg.RosPack()
         pkg_path = rospack.get_path("rospy_x402")
+        # Prefer package root .env (next to .env.example), then config/.env
+        paths.insert(0, os.path.join(pkg_path, ".env"))
         paths.insert(0, os.path.join(pkg_path, "config", ".env"))
     except (rospkg.ResourceNotFound, rospkg.ROSPkgException):
         pass
@@ -232,7 +234,10 @@ class X402BuyServiceHandler:
 def main() -> None:
     rospy.init_node("x402_ex_server")
 
-    config_path = rospy.get_param("~config_path", "")
+    config_path = rospy.get_param(
+        "~config_path",
+        os.environ.get("ROSPY_X402_CONFIG", "").strip(),
+    )
     if not config_path:
         rospack = rospkg.RosPack()
         package_path = rospack.get_path("rospy_x402")
