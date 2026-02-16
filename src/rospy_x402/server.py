@@ -5,7 +5,7 @@ import logging
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import rospy
@@ -16,6 +16,13 @@ from .x402 import (
     PaymentVerificationError,
     X402Client,
     X402Error,
+)
+from .x402.schema import (
+    SOLANA_MAINNET_NETWORK,
+    build_402_response_v2,
+    build_accepts_entry,
+    build_bazaar_extension,
+    build_resource_entry,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,16 +103,44 @@ class X402RestServer:
             def do_DELETE(self):  # noqa: N802
                 self._handle("DELETE")
 
+            def do_OPTIONS(self):  # noqa: N802
+                self.send_response(HTTPStatus.NO_CONTENT.value)
+                self._send_cors_headers()
+                self.end_headers()
+
+            def _send_cors_headers(self) -> None:
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header(
+                    "Access-Control-Allow-Methods",
+                    "GET, POST, PUT, DELETE, OPTIONS",
+                )
+                self.send_header(
+                    "Access-Control-Allow-Headers",
+                    "Content-Type, X-X402-Reference, Authorization",
+                )
+                self.send_header("Access-Control-Max-Age", "86400")
+
             def log_message(self, format_: str, *args: Any) -> None:
                 rospy.loginfo("x402_rest: " + format_, *args)
 
             def _handle(self, method: str) -> None:
-                endpoint = endpoint_map.get((self._normalized_path(self.path), method))
+                path = self._normalized_path(self.path)
+                host = self.headers.get("Host", "").strip()
+                if path == "/.well-known/x402" and method == "GET":
+                    doc = server._get_discovery_document(host)
+                    self._send_json(HTTPStatus.OK, doc)
+                    return
+
+                endpoint = endpoint_map.get((path, method))
                 if not endpoint:
                     self._send_json(
                         HTTPStatus.NOT_FOUND, {"error": "Endpoint not found"}
                     )
                     return
+
+                base_url = server._server_config.base_url or (
+                    ("https://" + host) if host else None
+                )
 
                 try:
                     payload = self._parse_body()
@@ -127,12 +162,20 @@ class X402RestServer:
                 )
 
                 try:
+                    # base_url only needed for x402 paid endpoints (402 response building in except)
+                    kwargs = (
+                        {"base_url": base_url}
+                        if getattr(endpoint, "x402_pricing", None)
+                        else {}
+                    )
                     response = server._process_endpoint_request(
-                        endpoint, payload, self.headers
+                        endpoint, payload, self.headers, **kwargs
                     )
                     self._send_json(HTTPStatus.OK, response)
                 except PaymentVerificationError as exc:
-                    payload = self._safe_error_payload(exc)
+                    payload = self._safe_error_payload(
+                        server, exc, endpoint, base_url
+                    )
                     self._send_json(HTTPStatus.PAYMENT_REQUIRED, payload)
                 except X402Error as exc:
                     self._send_json(
@@ -141,9 +184,10 @@ class X402RestServer:
                     )
                 except Exception as exc:  # pylint: disable=broad-except
                     rospy.logerr("Unhandled error processing request: %s", exc)
+                    err_msg = str(exc) or "Internal server error"
                     self._send_json(
                         HTTPStatus.INTERNAL_SERVER_ERROR,
-                        {"error": "Internal server error"},
+                        {"error": "Internal server error", "detail": err_msg},
                     )
 
             def _parse_body(self) -> Dict[str, Any]:
@@ -167,6 +211,7 @@ class X402RestServer:
                 self.send_response(status.value)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
+                self._send_cors_headers()
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -194,15 +239,71 @@ class X402RestServer:
                 return masked_headers
 
             @staticmethod
-            def _safe_error_payload(exc: Exception) -> Dict[str, Any]:
+            def _safe_error_payload(
+                srv: "X402RestServer",
+                exc: Exception,
+                endpoint: EndpointConfig,
+                base_url: Optional[str],
+            ) -> Dict[str, Any]:
                 message = str(exc)
                 try:
                     parsed = json.loads(message)
-                    if isinstance(parsed, dict):
-                        return parsed
-                except json.JSONDecodeError:
+                    if isinstance(parsed, dict) and "reference" in parsed and "receiver" in parsed:
+                        pricing = endpoint.x402_pricing
+                        if not pricing:
+                            return build_402_response_v2(
+                                accepts=[], error=message
+                            )
+                        network = (
+                            srv._server_config.x402_network
+                            or SOLANA_MAINNET_NETWORK
+                        )
+                        accepts = [
+                            build_accepts_entry(
+                                network=network,
+                                amount=str(parsed.get("amount", pricing.amount)),
+                                pay_to=parsed.get("receiver", ""),
+                                max_timeout_seconds=int(
+                                    parsed.get(
+                                        "expires_in_sec",
+                                        pricing.payment_window_sec,
+                                    )
+                                ),
+                                asset=parsed.get("asset", pricing.asset_symbol),
+                                extra={
+                                    "reference": parsed.get("reference", ""),
+                                    "expires_in_sec": parsed.get(
+                                        "expires_in_sec",
+                                        pricing.payment_window_sec,
+                                    ),
+                                },
+                            )
+                        ]
+                        resource = None
+                        if base_url:
+                            resource = build_resource_entry(
+                                url=base_url.rstrip("/") + endpoint.path,
+                                description=endpoint.description or "",
+                            )
+                        extensions = None
+                        if endpoint.metadata:
+                            req_schema = endpoint.metadata.get(
+                                "requestSchema"
+                            )
+                            if req_schema is not None:
+                                extensions = build_bazaar_extension(
+                                    input_schema=req_schema
+                                )
+                        return build_402_response_v2(
+                            accepts=accepts,
+                            resource=resource,
+                            extensions=extensions,
+                        )
+                except (json.JSONDecodeError, TypeError):
                     pass
-                return {"error": message}
+                return build_402_response_v2(
+                    accepts=[], error=message
+                )
 
             @staticmethod
             def _normalized_path(path: str) -> str:
@@ -216,12 +317,61 @@ class X402RestServer:
             for endpoint in self._server_config.endpoints
         }
 
+    def _get_discovery_document(self, host: str) -> Dict[str, Any]:
+        """
+        Build x402 V2 discovery document for GET /.well-known/x402.
+
+        Lists all endpoints as resources; paid ones include accepts[].
+        """
+        base = self._server_config.base_url or (
+            ("https://" + host) if host else "http://localhost"
+        )
+        base = base.rstrip("/")
+        network = (
+            self._server_config.x402_network or SOLANA_MAINNET_NETWORK
+        )
+        resources: List[Dict[str, Any]] = []
+        for endpoint in self._server_config.endpoints:
+            url = f"{base}{endpoint.path}"
+            resource: Dict[str, Any] = {
+                "url": url,
+                "description": endpoint.description or "",
+                "mimeType": "application/json",
+            }
+            if endpoint.x402_pricing:
+                p = endpoint.x402_pricing
+                receiver = p.receiver_account or (self._x402_client.public_key or "")
+                resource["accepts"] = [
+                    build_accepts_entry(
+                        network=network,
+                        amount=str(p.amount),
+                        pay_to=receiver,
+                        max_timeout_seconds=p.payment_window_sec,
+                        asset=p.asset_symbol,
+                        extra={},
+                    )
+                ]
+            else:
+                resource["accepts"] = []
+            if endpoint.metadata and endpoint.metadata.get("requestSchema"):
+                resource["extensions"] = build_bazaar_extension(
+                    input_schema=endpoint.metadata.get("requestSchema")
+                )
+            resources.append(resource)
+        return {
+            "x402Version": 2,
+            "resources": resources,
+        }
+
     def _process_endpoint_request(
         self,
         endpoint: EndpointConfig,
         body: Dict[str, Any],
         headers,
+        *,
+        base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
+        # base_url is only used when building 402 in the request handler's except block
         self._ensure_payment(endpoint, body, headers)
         result = self._invoke_action(endpoint, body)
         return {"status": "ok", "data": result}
