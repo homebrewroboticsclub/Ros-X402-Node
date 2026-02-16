@@ -1,0 +1,4 @@
+# Local env with secrets — do not commit
+.env
+*.pyc
+__pycache__/

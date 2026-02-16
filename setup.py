@@ -7,6 +7,12 @@ setup(
     package_dir={"": "src"},
     install_requires=[
         "pynacl",
+        "python-dotenv",
     ],
+    entry_points={
+        "console_scripts": [
+            "x402-bazaar=rospy_x402.bazaar_cli:main",
+        ],
+    },
 )
 
