@@ -7,6 +7,7 @@ setup(
     package_dir={"": "src"},
     install_requires=[
         "pynacl",
+        "python-dotenv",
     ],
     entry_points={
         "console_scripts": [

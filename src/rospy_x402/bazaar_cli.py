@@ -11,11 +11,33 @@ import argparse
 import json
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Union
 
 
 DEFAULT_BAZAAR_API = "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources"
+
+
+def _resource_matches_filter(r: Dict[str, Any], filter_str: str) -> bool:
+    """True if filter_str (case-insensitive) appears in description, resource URL, or metadata."""
+    if not filter_str:
+        return True
+    needle = filter_str.lower()
+    url_val = (r.get("resource") or r.get("url") or "").lower()
+    if needle in url_val:
+        return True
+    meta = r.get("metadata") or {}
+    for key in ("description", "name", "category", "tags", "title"):
+        val = meta.get(key)
+        if isinstance(val, str) and needle in val.lower():
+            return True
+        if isinstance(val, list) and any(needle in (str(v).lower()) for v in val):
+            return True
+    for acc in r.get("accepts") or []:
+        if isinstance(acc, dict) and needle in (acc.get("description") or "").lower():
+            return True
+    return False
 
 
 def _http_get(url: str, timeout: int = 15) -> Dict[str, Any]:
@@ -46,13 +68,31 @@ def _http_get_with_follow(
             return exc.code, body_b.decode("utf-8", errors="replace")
 
 
-def cmd_search(api_url: str, limit: int, offset: int) -> None:
+def cmd_search(
+    api_url: str,
+    limit: int,
+    offset: int,
+    query: Optional[str] = None,
+    filter_str: Optional[str] = None,
+    api_type: Optional[str] = None,
+    api_network: Optional[str] = None,
+    show_index: Optional[int] = None,
+    configure_index: Optional[int] = None,
+    configure_output: Optional[str] = None,
+    timeout: int = 15,
+) -> None:
     """List resources from the x402 Bazaar discovery API."""
     params = []
     if limit > 0:
         params.append(f"limit={limit}")
     if offset > 0:
         params.append(f"offset={offset}")
+    if query:
+        params.append(f"query={urllib.parse.quote(query)}")
+    if api_type:
+        params.append(f"type={urllib.parse.quote(api_type)}")
+    if api_network:
+        params.append(f"network={urllib.parse.quote(api_network)}")
     url = api_url + ("?" + "&".join(params) if params else "")
     try:
         data = _http_get(url)
@@ -60,19 +100,53 @@ def cmd_search(api_url: str, limit: int, offset: int) -> None:
         print(f"Error fetching discovery: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    raw = data.get("resources")
+    # CDP API uses "items" + "pagination"; support legacy "resources" + top-level total/limit/offset
+    raw = data.get("items") or data.get("resources")
     resources: List[Dict[str, Any]] = raw if isinstance(raw, list) else []
-    total = data.get("total", len(resources))
-    print(f"Resources (total={total}, limit={data.get('limit', limit)}, offset={data.get('offset', offset)}):\n")
-    for r in resources:
-        url_val = r.get("url", "")
+    if filter_str:
+        resources = [r for r in resources if _resource_matches_filter(r, filter_str)]
+        # Show that we applied a client-side filter
+        if filter_str and (data.get("items") or data.get("resources")):
+            total_fetched = len(data.get("items") or data.get("resources") or [])
+            print(f"Filter: \"{filter_str}\" (matched {len(resources)} of {total_fetched} on this page)\n")
+    pagination = data.get("pagination") or {}
+    total = pagination.get("total") or data.get("total", len(resources))
+    limit_val = pagination.get("limit", data.get("limit", limit))
+    offset_val = pagination.get("offset", data.get("offset", offset))
+    print(f"Resources (total={total}, limit={limit_val}, offset={offset_val}):\n")
+    for i, r in enumerate(resources, start=1):
+        url_val = r.get("resource") or r.get("url", "")
         meta = r.get("metadata") or {}
-        desc = (meta.get("description") or "")[:60]
+        desc = (meta.get("description") or "")
+        if not desc and r.get("accepts"):
+            acc = r["accepts"][0] if isinstance(r["accepts"], list) else r["accepts"]
+            desc = (acc.get("description") or "") if isinstance(acc, dict) else ""
+        desc = desc[:60]
         rtype = r.get("type", "http")
-        print(f"  {url_val}")
-        print(f"    type={rtype}  {desc}")
+        print(f"  {i}. {url_val}")
+        print(f"     type={rtype}  {desc}")
     if not resources:
         print("  (none)")
+    else:
+        print("\n  Show details:    x402-bazaar show <url>")
+        print("  Generate config: x402-bazaar configure <url> -o out.json")
+        print("  Shortcuts:       search --show-index N   or   search --configure-index N -o out.json")
+
+    # Shortcuts: run show or configure on Nth result (1-based index)
+    idx = show_index or configure_index
+    if idx is not None and resources:
+        one_based = max(1, int(idx))
+        if one_based > len(resources):
+            print(f"\nNo resource at index {one_based} (max {len(resources)}).", file=sys.stderr)
+            sys.exit(1)
+        chosen = resources[one_based - 1]
+        chosen_url = chosen.get("resource") or chosen.get("url", "")
+        if show_index is not None:
+            print(f"\n--- show #{one_based} ---\n")
+            cmd_show(chosen_url, timeout)
+        else:
+            print(f"\n--- configure #{one_based} ---\n")
+            cmd_configure(chosen_url, "POST", configure_output, timeout)
 
 
 def cmd_show(resource_url: str, timeout: int) -> None:
@@ -186,8 +260,57 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_search = sub.add_parser("search", help="List resources from x402 Bazaar discovery")
-    p_search.add_argument("--limit", type=int, default=20, help="Max results")
+    p_search.add_argument("--limit", "-n", type=int, default=20, help="Max results (default: 20)")
     p_search.add_argument("--offset", type=int, default=0, help="Pagination offset")
+    p_search.add_argument(
+        "--query", "-q",
+        type=str,
+        default=None,
+        help="Search query (passed to discovery API if supported)",
+    )
+    p_search.add_argument(
+        "--filter", "-f",
+        dest="filter_str",
+        type=str,
+        default=None,
+        metavar="TEXT",
+        help="Client-side filter: keep only resources whose description, URL, or metadata contain TEXT (e.g. LLM, sentiment, storage). Applied to current page.",
+    )
+    p_search.add_argument(
+        "--type",
+        dest="api_type",
+        type=str,
+        default=None,
+        metavar="TYPE",
+        help="Pass type to discovery API if supported (e.g. http).",
+    )
+    p_search.add_argument(
+        "--network",
+        dest="api_network",
+        type=str,
+        default=None,
+        metavar="NETWORK",
+        help="Pass network to discovery API if supported (e.g. base, solana).",
+    )
+    p_search.add_argument(
+        "--show-index", "-s",
+        type=int,
+        default=None,
+        metavar="N",
+        help="After listing, show 402 details for result N (1-based)",
+    )
+    p_search.add_argument(
+        "--configure-index", "-c",
+        type=int,
+        default=None,
+        metavar="N",
+        help="After listing, generate config for result N (1-based); use -o to write file",
+    )
+    p_search.add_argument(
+        "--output", "-o",
+        dest="configure_output",
+        help="With --configure-index: write config to this file",
+    )
 
     p_show = sub.add_parser("show", help="Probe a resource URL and show 402 payment details")
     p_show.add_argument("url", help="Resource URL (e.g. https://api.example.com/v1/action)")
@@ -203,7 +326,19 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "search":
-        cmd_search(args.api_url, args.limit, args.offset)
+        cmd_search(
+            args.api_url,
+            args.limit,
+            args.offset,
+            query=getattr(args, "query", None),
+            filter_str=getattr(args, "filter_str", None),
+            api_type=getattr(args, "api_type", None),
+            api_network=getattr(args, "api_network", None),
+            show_index=getattr(args, "show_index", None),
+            configure_index=getattr(args, "configure_index", None),
+            configure_output=getattr(args, "configure_output", None),
+            timeout=args.timeout,
+        )
     elif args.command == "show":
         cmd_show(args.url, args.timeout)
     elif args.command == "configure":

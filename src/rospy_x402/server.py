@@ -103,6 +103,23 @@ class X402RestServer:
             def do_DELETE(self):  # noqa: N802
                 self._handle("DELETE")
 
+            def do_OPTIONS(self):  # noqa: N802
+                self.send_response(HTTPStatus.NO_CONTENT.value)
+                self._send_cors_headers()
+                self.end_headers()
+
+            def _send_cors_headers(self) -> None:
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header(
+                    "Access-Control-Allow-Methods",
+                    "GET, POST, PUT, DELETE, OPTIONS",
+                )
+                self.send_header(
+                    "Access-Control-Allow-Headers",
+                    "Content-Type, X-X402-Reference, Authorization",
+                )
+                self.send_header("Access-Control-Max-Age", "86400")
+
             def log_message(self, format_: str, *args: Any) -> None:
                 rospy.loginfo("x402_rest: " + format_, *args)
 
@@ -145,8 +162,14 @@ class X402RestServer:
                 )
 
                 try:
+                    # base_url only needed for x402 paid endpoints (402 response building in except)
+                    kwargs = (
+                        {"base_url": base_url}
+                        if getattr(endpoint, "x402_pricing", None)
+                        else {}
+                    )
                     response = server._process_endpoint_request(
-                        endpoint, payload, self.headers, base_url=base_url
+                        endpoint, payload, self.headers, **kwargs
                     )
                     self._send_json(HTTPStatus.OK, response)
                 except PaymentVerificationError as exc:
@@ -161,9 +184,10 @@ class X402RestServer:
                     )
                 except Exception as exc:  # pylint: disable=broad-except
                     rospy.logerr("Unhandled error processing request: %s", exc)
+                    err_msg = str(exc) or "Internal server error"
                     self._send_json(
                         HTTPStatus.INTERNAL_SERVER_ERROR,
-                        {"error": "Internal server error"},
+                        {"error": "Internal server error", "detail": err_msg},
                     )
 
             def _parse_body(self) -> Dict[str, Any]:
@@ -187,6 +211,7 @@ class X402RestServer:
                 self.send_response(status.value)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
+                self._send_cors_headers()
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -343,7 +368,10 @@ class X402RestServer:
         endpoint: EndpointConfig,
         body: Dict[str, Any],
         headers,
+        *,
+        base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
+        # base_url is only used when building 402 in the request handler's except block
         self._ensure_payment(endpoint, body, headers)
         result = self._invoke_action(endpoint, body)
         return {"status": "ok", "data": result}
