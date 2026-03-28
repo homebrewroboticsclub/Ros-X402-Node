@@ -13,7 +13,7 @@ This document describes the current architecture of the `rospy_x402` package so 
 rospy_x402/
 ├── config/
 │   └── endpoints.example.json   # Endpoint and pricing config
-├── docs/                         # Architecture and protocol docs
+├── DOC/                          # Architecture and protocol docs
 ├── scripts/
 │   └── x402_ex_server.py         # ROS node: REST server + x402_buy_service
 ├── src/rospy_x402/

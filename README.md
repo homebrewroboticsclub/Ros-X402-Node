@@ -528,13 +528,15 @@ x402-bazaar show https://api.example.com/v1/paid-action
 x402-bazaar configure https://api.example.com/v1/paid-action -o bazaar_config.json
 ```
 
-After `configure`, use the printed `rosservice call /x402_buy_service ...` with the indicated `endpoint`, `amount`, and `payer_account` (payTo) to let the robot pay and call that service. See `docs/X402_PROTOCOL.md` for the exact exchange schema.
+After `configure`, use the printed `rosservice call /x402_buy_service ...` with the indicated `endpoint`, `amount`, and `payer_account` (payTo) to let the robot pay and call that service. See `DOC/X402_PROTOCOL.md` for the exact exchange schema.
 
 ## Documentation
 
-- **`docs/ARCHITECTURE.md`**: Current architecture for developers and agents (components, data flow, extension points).
-- **`docs/X402_PROTOCOL.md`**: Single source of truth for x402 V2 (402 response, discovery, verification, config).
-- **`docs/ARCHITECTURE_DIAGRAMS.md`**: Mermaid diagrams for node architecture and payment verification flow.
+- **[DOC/README.md](DOC/README.md)** — documentation index by functional area
+- **[DEV_AI.md](DEV_AI.md)** — context and workflow for AI coding agents
+- **[DOC/ARCHITECTURE.md](DOC/ARCHITECTURE.md)** — components, data flow, extension points
+- **[DOC/X402_PROTOCOL.md](DOC/X402_PROTOCOL.md)** — x402 V2 (402 response, discovery, verification, config)
+- **[DOC/ARCHITECTURE_DIAGRAMS.md](DOC/ARCHITECTURE_DIAGRAMS.md)** — Mermaid diagrams
 
 ## Launching via roslaunch
 
