@@ -1,5 +1,9 @@
 # DEV_AI — контекст для агентов (rospy_x402)
 
+## Единая точка входа экосистемы (KYR + x402 + teleop)
+
+Запуск, RAID, частые команды и индекс доков связки: **[../br_bringup/DEV_AI.md](../br_bringup/DEV_AI.md)**, **[../br_bringup/README.md](../br_bringup/README.md)**.
+
 ## Назначение
 
 ROS 1 (Noetic) пакет: REST API над возможностями робота с оплатой по протоколу **x402** (Solana), ROS-сервис исходящих платежей, библиотека `rospy_x402.x402`.
