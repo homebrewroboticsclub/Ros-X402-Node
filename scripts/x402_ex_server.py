@@ -301,7 +301,7 @@ def main() -> None:
     rospy.Service("x402_buy_service", x402_buy_service, buy_handler)
 
     # Escalation Manager
-    raid_app_url = rospy.get_param("~raid_app_url", "http://192.168.20.53:8088")
+    raid_app_url = rospy.get_param("~raid_app_url", "http://192.168.20.53:3000")
     raid_robot_id = rospy.get_param("~raid_robot_id", os.environ.get("RAID_ROBOT_ID", ""))
     raid_teleop_secret = rospy.get_param("~raid_teleop_secret", os.environ.get("RAID_TELEOP_SECRET", ""))
 
