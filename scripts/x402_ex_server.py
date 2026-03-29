@@ -12,32 +12,44 @@ from typing import Dict, Optional
 import rospkg
 import rospy
 
-# Load .env before reading RPC/key so env vars are available in main()
+# Paths of .env files successfully merged (last file wins per key). Set at import time.
+_DOTENV_LOADED_PATHS: list = []
+_DOTENV_IMPORT_FAILED: bool = False
+
+
 def _load_dotenv() -> None:
+    """
+    Merge several optional .env files (override=True in order — later wins).
+    Do not stop at the first file: an empty ~/.env must not block package .env.
+    """
+    global _DOTENV_LOADED_PATHS, _DOTENV_IMPORT_FAILED
     try:
         from dotenv import load_dotenv
     except ImportError:
+        _DOTENV_IMPORT_FAILED = True
         return
-    paths = []
-    # Explicit path from launch file (when run via roslaunch)
+
     env_file = os.environ.get("ROSPY_X402_ENV_FILE", "").strip()
-    if env_file:
-        paths.append(env_file)
-    paths.extend([
-        os.path.join(os.getcwd(), ".env"),
-        os.path.join(os.path.expanduser("~"), ".rospy_x402.env"),
-    ])
+    ordered: list = []
     try:
         rospack = rospkg.RosPack()
         pkg_path = rospack.get_path("rospy_x402")
-        paths.insert(0, os.path.join(pkg_path, "config", ".env"))
-        paths.insert(0, os.path.join(pkg_path, ".env"))
+        ordered.append(os.path.join(pkg_path, "config", ".env"))
+        ordered.append(os.path.join(pkg_path, ".env"))
     except (rospkg.ResourceNotFound, rospkg.ROSPkgException):
         pass
-    for path in paths:
-        if path and os.path.isfile(path):
-            load_dotenv(path, override=False)
-            break
+    ordered.append(os.path.join(os.getcwd(), ".env"))
+    ordered.append(os.path.join(os.path.expanduser("~"), ".rospy_x402.env"))
+    if env_file:
+        ordered.append(env_file)
+
+    seen = set()
+    for path in ordered:
+        if not path or path in seen or not os.path.isfile(path):
+            continue
+        seen.add(path)
+        load_dotenv(path, override=True)
+        _DOTENV_LOADED_PATHS.append(path)
 
 
 _load_dotenv()
@@ -295,6 +307,21 @@ def main() -> None:
     if rest_server.facilitator_url:
         rospy.loginfo("Configured external facilitator at %s", rest_server.facilitator_url)
 
+    if _DOTENV_IMPORT_FAILED:
+        rospy.logwarn(
+            "python3-dotenv is not installed; .env files are ignored. "
+            "Install: sudo apt install python3-dotenv"
+        )
+    elif _DOTENV_LOADED_PATHS:
+        rospy.loginfo("rospy_x402 dotenv merged from: %s", " | ".join(_DOTENV_LOADED_PATHS))
+    else:
+        rospy.logwarn(
+            "No .env file found for rospy_x402 (package config/.env and .env, cwd .env, "
+            "~/.rospy_x402.env, ROSPY_X402_ENV_FILE). "
+            "Either copy .env.example to the package .env on this machine, or "
+            "export ROBOT_FLEET_ENROLLMENT_SECRET / RAID_* before roslaunch."
+        )
+
     # rosparam > env RAID_APP_URL > static IP (mDNS often breaks in Docker / some LANs)
     raid_app_url = (rospy.get_param("~raid_app_url", "") or "").strip()
     if not raid_app_url:
@@ -386,6 +413,16 @@ def main() -> None:
                 rospy.loginfo("RAID enroll ok; credentials saved to %s", state_path)
             except Exception as exc:  # pylint: disable=broad-except
                 rospy.logerr("RAID enroll failed: %s", exc)
+
+    if not raid_robot_id or not raid_teleop_secret:
+        rospy.logwarn(
+            "RAID credentials still missing: teleop/help will fail until you set "
+            "~raid_robot_id + ~raid_teleop_secret, or enroll (fleet secret + "
+            "RAID_ENROLLMENT_KEY + RAID_ENROLL_HOST in env and reachable %s), "
+            "or place id/teleopSecret in %s.",
+            raid_app_url,
+            state_path,
+        )
 
     if raid_to_robot_secret:
         rest_server.raid_operator_sync_path = sync_path

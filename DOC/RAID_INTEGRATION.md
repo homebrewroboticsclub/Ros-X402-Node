@@ -66,6 +66,8 @@
 
 Секреты **не** коммитить; использовать `~/.rospy_x402.env`, `ROSPY_X402_ENV_FILE` или systemd `Environment=`.
 
+**Почему нет enroll в логах:** файл `rospy_x402/.env` в `.gitignore` — на роботе после `git pull` его нет, пока не скопируете с машины разработки или не создадите из `.env.example`. Нужен пакет **python3-dotenv** (`sudo apt install python3-dotenv`). Нода мержит несколько `.env` подряд (пакет `config/.env`, пакет `.env`, cwd, `~/.rospy_x402.env`, `ROSPY_X402_ENV_FILE` — последний побеждает). Либо перед `roslaunch` выполните `export ROBOT_FLEET_ENROLLMENT_SECRET=...` и т.д. — дочерний процесс унаследует окружение.
+
 ## Поведение teleop/help
 
 Успех: HTTP **200** или **201**. Ответ **200** с `duplicate: true` — заявка уже открыта, обрабатывается как успех. **401** — неверные `robotId` / `teleopSecret`, ретраи бессмысленны до исправления конфигурации или повторного enroll.
