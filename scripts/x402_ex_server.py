@@ -58,6 +58,8 @@ from rospy_x402.srv import (
 )
 
 
+from rospy_x402.escalation_service import EscalationManager
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("x402_ex_server")
 
@@ -297,6 +299,15 @@ def main() -> None:
     )
 
     rospy.Service("x402_buy_service", x402_buy_service, buy_handler)
+
+    # Escalation Manager
+    raid_app_url = rospy.get_param("~raid_app_url", "http://raid-app-proxy:8080")
+    try:
+        escalation_manager = EscalationManager(raid_app_url, x402_client=rest_server.x402_client)
+        rospy.loginfo("EscalationManager initialized.")
+    except Exception as e:
+        rospy.logwarn(f"EscalationManager failed to initialize: {e}")
+
     rospy.loginfo("Loaded x402 key. Public key: %s", key_material.public_key_b58)
     rospy.loginfo("x402_ex_server node started")
 

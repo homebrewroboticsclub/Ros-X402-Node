@@ -144,6 +144,12 @@ class X402Client:
             )
 
         lamports = int(amount_sol * LAMPORTS_PER_SOL)
+        
+        # Prevent sending 0 lamports (e.g. for free test sessions or short errors)
+        if lamports <= 0:
+            logger.info(f"Skipping x402 payment: amount {amount_sol} SOL is too small or zero.")
+            return "skipped_zero_amount"
+
         sender = SolanaTransactionSender(self._rpc.endpoint)
         response = sender.transfer_lamports(
             keypair_secret=self._key_material.secret_key_64,

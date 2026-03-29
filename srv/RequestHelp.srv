@@ -1,0 +1,5 @@
+string task_id
+string error_context # JSON string with error details
+---
+bool success
+string message

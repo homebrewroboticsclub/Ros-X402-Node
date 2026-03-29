@@ -4,7 +4,7 @@ This document describes the current architecture of the `rospy_x402` package so 
 
 ## Overview
 
-- **Purpose**: Expose robot capabilities over REST with pay-per-use enforcement via the x402 protocol (Solana), and allow the robot to pay external x402 services via a ROS service.
+- **Purpose**: Expose robot capabilities over REST with pay-per-use enforcement via the x402 protocol (Solana), handle teleoperation escalation to RAID APP, and allow the robot to pay external x402 services (including post-pay for teleoperators based on KYR SignedReceipts).
 - **Stack**: ROS 1 (Noetic), Python 3, HTTP server (stdlib), Solana RPC for payment verification and sending.
 
 ## Directory layout
