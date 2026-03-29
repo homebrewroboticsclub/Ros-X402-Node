@@ -295,7 +295,12 @@ def main() -> None:
     if rest_server.facilitator_url:
         rospy.loginfo("Configured external facilitator at %s", rest_server.facilitator_url)
 
-    raid_app_url = rospy.get_param("~raid_app_url", "http://raid-app.local:3000")
+    # rosparam > env RAID_APP_URL > static IP (mDNS often breaks in Docker / some LANs)
+    raid_app_url = (rospy.get_param("~raid_app_url", "") or "").strip()
+    if not raid_app_url:
+        raid_app_url = (os.environ.get("RAID_APP_URL") or "").strip()
+    if not raid_app_url:
+        raid_app_url = "http://192.168.20.53:3000"
     state_path = (
         (os.environ.get("RAID_STATE_FILE") or "").strip()
         or (rospy.get_param("~raid_state_file", "") or "").strip()

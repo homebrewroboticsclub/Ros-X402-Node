@@ -54,7 +54,7 @@
 
 | Имя | Назначение |
 |-----|------------|
-| `~raid_app_url` / база URL | Все вызовы к RAID. В LAN при mDNS на RAID: часто `http://raid-app.local:3000`. |
+| `~raid_app_url` / `RAID_APP_URL` / база URL | Все вызовы к RAID. Приоритет: непустой rosparam, иначе `RAID_APP_URL` из `.env`, иначе умолчание `http://192.168.20.53:3000` (резерв при сбое mDNS). Для mDNS: `raid_app_url:="http://raid-app.local:3000"` или `RAID_APP_URL=http://raid-app.local:3000`. |
 | `ROBOT_FLEET_ENROLLMENT_SECRET` / `~robot_fleet_enrollment_secret` | Только enroll и прочие мутации `/api/robots` с флот-авторизацией на стороне RAID. |
 | `RAID_ENROLLMENT_KEY` / `~raid_enrollment_key` | Стабильный ключ устройства (идемпотентный enroll). |
 | `~raid_enroll_host`, `RAID_ENROLL_HOST` | Хост в теле enroll (`host`) — не `localhost`, если RAID на другой машине. |
