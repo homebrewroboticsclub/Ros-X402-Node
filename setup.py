@@ -8,6 +8,7 @@ setup(
     install_requires=[
         "pynacl",
         "python-dotenv",
+        "requests",
     ],
     entry_points={
         "console_scripts": [

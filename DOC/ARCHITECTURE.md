@@ -20,6 +20,8 @@ rospy_x402/
 │   ├── config.py                 # ServerConfig, EndpointConfig, EndpointPricing, load_config
 │   ├── server.py                 # X402RestServer (HTTP + x402 402 handling)
 │   ├── health.py                 # get_health_status (used by /health endpoint)
+│   ├── raid_integration.py       # RAID enroll, state file, operator allowlist JSON
+│   ├── escalation_service.py     # teleop/help to RAID, RequestHelp, mock SessionGrant
 │   ├── demo_actions.py           # Demo callables (move_demo, buy_cola_demo, shoot_demo)
 │   ├── bazaar_cli.py             # Console CLI for x402 Bazaar (search/configure)
 │   └── x402/                     # Reusable x402/Solana library
@@ -51,6 +53,7 @@ rospy_x402/
 - **X402RestServer**: Holds `ServerConfig`, `X402Client`, and an in-process `ThreadingHTTPServer`.
 - **Routes**: Built from config; each `(path, method)` maps to one `EndpointConfig`.
 - **Special route**: `GET /.well-known/x402` serves the x402 V2 discovery document (all endpoints as resources with `accepts` for paid ones).
+- **RAID operator sync** (optional): If `raid_to_robot_secret` is set on the server instance, `POST` on `raid_operator_sync_path` validates `X-Raid-To-Robot-Secret` and writes `allowedTeleoperatorIds` via `raid_integration.save_operator_allowlist` (handled before the config endpoint map).
 - **Request flow**: Parse body → resolve endpoint → compute `base_url` (config or `Host` header) → `_process_endpoint_request(endpoint, body, headers, base_url)`.
 - **Payment enforcement**: For endpoints with `x402_pricing`, `_ensure_payment` checks for `X-X402-Reference` (or body `x402_reference`). If missing or invalid session, it creates a payment session and raises `PaymentVerificationError` with a **x402 V2** JSON body (`x402Version: 2`, `accepts[]`, optional `resource`, `extensions.bazaar`). If session exists, it calls `X402Client.verify_payment(reference)` then proceeds.
 - **Action invocation**: After payment, the handler invokes the Python callable from `ros_action` (module/callable) with optional `body`; response is `{"status": "ok", "data": result}`.
@@ -63,6 +66,7 @@ rospy_x402/
 
 ### 4. ROS node (`scripts/x402_ex_server.py`)
 
+- Resolves RAID credentials: rosparam/env → state file `~/.ros/raid_robot_state.json` → optional auto-enroll (`raid_integration.enroll_robot`). Configures operator-sync route on `X402RestServer` when `RAID_TO_ROBOT_SECRET` is set.
 - Loads config and Solana key (prompt), creates `X402RestServer` and starts it in a daemon thread.
 - Advertises `x402_buy_service`: request fields include `endpoint`, `method`, `payload`, `headers_json`, `amount`, `asset_symbol`, `payer_account`. If `payer_account` is set, the node **sends** payment to that address then calls the endpoint (e.g. with `X-X402-Payment-Signature`). If empty, the node **creates an incoming payment session** and waits for the caller to pay the robot, then proceeds (used when the client pays the robot before calling).
 

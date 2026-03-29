@@ -16,6 +16,7 @@ All runtime logs and comments are in English, while the ROS package name follows
 - **In-memory key handling**: The node loads the Solana private key from `.env` (if `SOLANA_PRIVATE_KEY` is set) or prompts once on startup; the key is kept only in RAM.
 - **Helius RPC by default**: If `HELIUS_API_KEY` is set in `.env`, the node uses Helius mainnet RPC; otherwise the public endpoint or `~solana_rpc_endpoint` is used.
 - **Library-first architecture**: All x402/Solana logic is separated into clean modules for reuse in other projects.
+- **RAID App (teleop registry)**: HTTP enroll, escalation `teleop/help`, optional push allowlist on the same REST port — see [DOC/RAID_INTEGRATION.md](DOC/RAID_INTEGRATION.md).
 
 ## Prerequisites
 
@@ -29,7 +30,7 @@ All runtime logs and comments are in English, while the ROS package name follows
 
 ```bash
 sudo apt-get install python3-nacl
-pip3 install --user solana python-dotenv
+pip3 install --user solana python-dotenv requests
 ```
 
 Add `~/.local/bin` to your `PATH` if you use the `--user` flag for `pip`.

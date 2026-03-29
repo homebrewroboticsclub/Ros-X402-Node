@@ -14,6 +14,10 @@
 
 - [ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md) — Mermaid: потоки и верификация.
 
+## RAID App (enroll, help, allowlist)
+
+- [RAID_INTEGRATION.md](RAID_INTEGRATION.md) — флот-секрет, enroll, персистентность, sync операторов, параметры ноды `x402_ex_server`.
+
 ---
 
 При изменении кода обновляйте соответствующие разделы и при появлении нового функционального блока — новый файл в `DOC/` + ссылка в этом индексе, в README и DEV_AI.

@@ -113,12 +113,22 @@ class EscalationManager:
             }
         }
 
-        logger.info(f"POST {url} ...")
+        logger.info("POST %s ...", url)
         response = requests.post(url, json=payload, headers=headers, timeout=10.0)
-        response.raise_for_status()
+
+        if response.status_code == 401:
+            raise ValueError(
+                "RAID teleop/help rejected credentials (401). "
+                "Check raid_robot_id and raid_teleop_secret (or re-enroll)."
+            )
+        if response.status_code not in (200, 201):
+            response.raise_for_status()
+
         data = response.json()
-        
-        logger.info(f"RAID APP responded with status {response.status_code}")
+        if response.status_code == 200 and data.get("duplicate"):
+            logger.info("RAID teleop/help returned duplicate=true (request already open).")
+        else:
+            logger.info("RAID teleop/help status=%s", response.status_code)
 
         # Temporary solution: Since RAID currently returns only the helpRequest and not a signed
         # cryptographic grant, we generate a mock valid SessionGrant here to satisfy KYR.

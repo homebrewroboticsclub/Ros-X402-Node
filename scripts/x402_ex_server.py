@@ -59,6 +59,17 @@ from rospy_x402.srv import (
 
 
 from rospy_x402.escalation_service import EscalationManager
+from rospy_x402.raid_integration import (
+    build_operator_registry_url,
+    credentials_from_state,
+    default_allowlist_path,
+    default_state_path,
+    enroll_robot,
+    load_raid_state,
+    normalized_sync_path,
+    parse_enroll_credentials,
+    save_raid_state,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("x402_ex_server")
@@ -284,6 +295,107 @@ def main() -> None:
     if rest_server.facilitator_url:
         rospy.loginfo("Configured external facilitator at %s", rest_server.facilitator_url)
 
+    raid_app_url = rospy.get_param("~raid_app_url", "http://raid-app.local:3000")
+    state_path = (
+        (os.environ.get("RAID_STATE_FILE") or "").strip()
+        or (rospy.get_param("~raid_state_file", "") or "").strip()
+        or default_state_path()
+    )
+    allowlist_path = (
+        (os.environ.get("RAID_ALLOWLIST_FILE") or "").strip()
+        or (rospy.get_param("~raid_allowlist_file", "") or "").strip()
+        or default_allowlist_path(state_path)
+    )
+    fleet_secret = (
+        (os.environ.get("ROBOT_FLEET_ENROLLMENT_SECRET") or "").strip()
+        or (rospy.get_param("~robot_fleet_enrollment_secret", "") or "").strip()
+    )
+    enroll_key = (
+        (os.environ.get("RAID_ENROLLMENT_KEY") or "").strip()
+        or (rospy.get_param("~raid_enrollment_key", "") or "").strip()
+    )
+    raid_to_robot_secret = (
+        (os.environ.get("RAID_TO_ROBOT_SECRET") or "").strip()
+        or (rospy.get_param("~raid_to_robot_secret", "") or "").strip()
+    )
+    sync_path = normalized_sync_path(
+        rospy.get_param("~raid_operator_sync_path", "/raid/operator-allowlist")
+    )
+
+    listen_port = int(rest_server._server_config.listen_port)
+    enroll_http_port = int(rospy.get_param("~raid_enroll_http_port", listen_port))
+    enroll_host = (
+        (rospy.get_param("~raid_enroll_host", "") or "").strip()
+        or (os.environ.get("RAID_ENROLL_HOST") or "").strip()
+    )
+
+    registry_url = None
+    if raid_to_robot_secret and enroll_host:
+        registry_url = build_operator_registry_url(
+            enroll_host, enroll_http_port, sync_path
+        )
+
+    raid_robot_id = (
+        (rospy.get_param("~raid_robot_id", "") or "").strip()
+        or (os.environ.get("RAID_ROBOT_ID") or "").strip()
+    )
+    raid_teleop_secret = (
+        (rospy.get_param("~raid_teleop_secret", "") or "").strip()
+        or (os.environ.get("RAID_TELEOP_SECRET") or "").strip()
+    )
+
+    if not raid_robot_id or not raid_teleop_secret:
+        saved = load_raid_state(state_path)
+        if saved:
+            creds = credentials_from_state(saved)
+            if creds:
+                raid_robot_id, raid_teleop_secret = creds
+                rospy.loginfo("Loaded RAID credentials from %s", state_path)
+
+    if (not raid_robot_id or not raid_teleop_secret) and fleet_secret and enroll_key:
+        if not enroll_host:
+            rospy.logerr(
+                "RAID auto-enroll skipped: set ~raid_enroll_host or RAID_ENROLL_HOST "
+                "(LAN-reachable address for RAID HTTP health)."
+            )
+        else:
+            rb_host = (rospy.get_param("~raid_enroll_rosbridge_host", "") or "").strip()
+            if not rb_host:
+                rb_host = enroll_host
+            rb_port = int(rospy.get_param("~raid_enroll_rosbridge_port", 9090))
+            robot_name = (rospy.get_param("~raid_robot_name", "") or "").strip() or None
+            try:
+                data = enroll_robot(
+                    raid_app_url,
+                    fleet_secret,
+                    enroll_key,
+                    enroll_host,
+                    enroll_http_port,
+                    rosbridge_host=rb_host,
+                    rosbridge_port=rb_port,
+                    name=robot_name,
+                    operator_registry_url=registry_url,
+                )
+                raid_robot_id, raid_teleop_secret = parse_enroll_credentials(data)
+                save_raid_state(state_path, raid_robot_id, raid_teleop_secret)
+                rospy.loginfo("RAID enroll ok; credentials saved to %s", state_path)
+            except Exception as exc:  # pylint: disable=broad-except
+                rospy.logerr("RAID enroll failed: %s", exc)
+
+    if raid_to_robot_secret:
+        rest_server.raid_operator_sync_path = sync_path
+        rest_server.raid_to_robot_secret = raid_to_robot_secret
+        rest_server.raid_allowlist_file = allowlist_path
+        rospy.loginfo(
+            "RAID operator sync enabled at POST %s (allowlist file %s)",
+            sync_path,
+            allowlist_path,
+        )
+    else:
+        rest_server.raid_operator_sync_path = None
+        rest_server.raid_to_robot_secret = None
+        rest_server.raid_allowlist_file = None
+
     try:
         rest_server.start()
     except Exception as exc:  # pylint: disable=broad-except
@@ -300,21 +412,16 @@ def main() -> None:
 
     rospy.Service("x402_buy_service", x402_buy_service, buy_handler)
 
-    # Escalation Manager
-    raid_app_url = rospy.get_param("~raid_app_url", "http://192.168.20.53:3000")
-    raid_robot_id = rospy.get_param("~raid_robot_id", os.environ.get("RAID_ROBOT_ID", ""))
-    raid_teleop_secret = rospy.get_param("~raid_teleop_secret", os.environ.get("RAID_TELEOP_SECRET", ""))
-
     try:
         escalation_manager = EscalationManager(
             raid_app_url=raid_app_url,
             robot_id=raid_robot_id,
             teleop_secret=raid_teleop_secret,
-            x402_client=rest_server.x402_client
+            x402_client=rest_server.x402_client,
         )
         rospy.loginfo("EscalationManager initialized.")
-    except Exception as e:
-        rospy.logwarn(f"EscalationManager failed to initialize: {e}")
+    except Exception as exc:  # pylint: disable=broad-except
+        rospy.logwarn("EscalationManager failed to initialize: %s", exc)
 
     rospy.loginfo("Loaded x402 key. Public key: %s", key_material.public_key_b58)
     rospy.loginfo("x402_ex_server node started")
