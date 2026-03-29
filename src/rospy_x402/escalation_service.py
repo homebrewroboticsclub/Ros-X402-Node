@@ -24,8 +24,10 @@ class EscalationManager:
     """
     Handles escalation to RAID_APP when the robot needs help.
     """
-    def __init__(self, raid_app_url: str, x402_client=None):
+    def __init__(self, raid_app_url: str, robot_id: str, teleop_secret: str, x402_client=None):
         self.raid_app_url = raid_app_url.rstrip('/')
+        self.robot_id = robot_id
+        self.teleop_secret = teleop_secret
         self.x402_client = x402_client
         self.base_rate_per_sec = 0.000001 # 1 lamport approx/micro sol per sec for testing
         
@@ -91,31 +93,48 @@ class EscalationManager:
 
     def _request_grant_from_raid(self, event: Dict[str, Any]) -> Tuple[str, str]:
         """
-        Mock implementation of calling RAID APP.
-        In a real scenario, this would POST to self.raid_app_url + '/api/v1/escalate'
-        and wait for a match and a cryptographic grant.
+        Calls RAID APP to request help and obtain a teleop grant.
         """
-        # --- Mocking RAID APP response for testing ---
-        # We generate a dummy grant payload and a dummy signature
         import uuid
         
+        if not self.robot_id or not self.teleop_secret:
+            raise ValueError("RAID robot_id or teleop_secret not configured.")
+
+        url = f"{self.raid_app_url}/api/robots/{self.robot_id}/teleop/help"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Robot-Teleop-Secret": self.teleop_secret
+        }
+        payload = {
+            "message": "Need assistance",
+            "metadata": {
+                "task_id": event.get("task_id", "unknown"),
+                "error_context": event.get("error_context", "")
+            }
+        }
+
+        logger.info(f"POST {url} ...")
+        response = requests.post(url, json=payload, headers=headers, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        
+        logger.info(f"RAID APP responded with status {response.status_code}")
+
+        # Temporary solution: Since RAID currently returns only the helpRequest and not a signed
+        # cryptographic grant, we generate a mock valid SessionGrant here to satisfy KYR.
+        # In the future, this data (and its signature) will come directly from RAID.
+        
         grant = {
-            "session_id": str(uuid.uuid4()),
-            "robot_id": "robot_001",
+            "session_id": data.get("id", str(uuid.uuid4())),
+            "robot_id": self.robot_id,
             "task_id": event.get("task_id", "unknown"),
-            "operator_pubkey": "mock_pubkey_12345",
+            "operator_pubkey": "pending_from_raid", # To be replaced when RAID supports it
             "valid_until_sec": int(time.time()) + 3600,
             "scope_json": json.dumps({"allowed_actions": ["*"]})
         }
         
         payload_str = json.dumps(grant)
         dummy_sig = "dummy_signature_base58_encoded"
-        
-        # Real implementation would look like:
-        # response = requests.post(f"{self.raid_app_url}/api/v1/escalate", json=event)
-        # response.raise_for_status()
-        # data = response.json()
-        # return data["grant_payload"], data["signature"]
 
         return payload_str, dummy_sig
 

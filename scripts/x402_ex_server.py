@@ -301,9 +301,17 @@ def main() -> None:
     rospy.Service("x402_buy_service", x402_buy_service, buy_handler)
 
     # Escalation Manager
-    raid_app_url = rospy.get_param("~raid_app_url", "http://raid-app-proxy:8080")
+    raid_app_url = rospy.get_param("~raid_app_url", "http://192.168.20.53:8088")
+    raid_robot_id = rospy.get_param("~raid_robot_id", os.environ.get("RAID_ROBOT_ID", ""))
+    raid_teleop_secret = rospy.get_param("~raid_teleop_secret", os.environ.get("RAID_TELEOP_SECRET", ""))
+
     try:
-        escalation_manager = EscalationManager(raid_app_url, x402_client=rest_server.x402_client)
+        escalation_manager = EscalationManager(
+            raid_app_url=raid_app_url,
+            robot_id=raid_robot_id,
+            teleop_secret=raid_teleop_secret,
+            x402_client=rest_server.x402_client
+        )
         rospy.loginfo("EscalationManager initialized.")
     except Exception as e:
         rospy.logwarn(f"EscalationManager failed to initialize: {e}")
