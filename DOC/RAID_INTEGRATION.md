@@ -5,7 +5,7 @@
 ## Порядок шагов
 
 1. **Enroll (A)** — `POST /api/robots/enroll` с флот-секретом; в ответе `id` (robot UUID) и `teleopSecret`. При повторе с тем же `enrollmentKey` запись обновляется, `id` стабилен.
-2. **Help (B)** — `POST /api/robots/{robotId}/teleop/help` с `X-Robot-Teleop-Secret` (реализовано в `EscalationManager`).
+2. **Help (B)** — `POST /api/robots/{robotId}/teleop/help` с `X-Robot-Teleop-Secret` (реализовано в `EscalationManager`). Тело JSON и поле `metadata.situation_report`: см. [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
 3. **Push allowlist (опционально)** — RAID вызывает **точный** URL из `operatorRegistryUrl` при sync: `POST` с заголовком `X-Raid-To-Robot-Secret` и телом `{"allowedTeleoperatorIds": ["uuid", ...]}`. Внешняя спецификация: `ROBOT_OPERATOR_SYNC.md` в RAID.
 
 Если на RAID **не задан** `ROBOT_FLEET_ENROLLMENT_SECRET`, enroll вернёт **503** — это конфигурация сервера.
@@ -71,6 +71,10 @@
 ## Поведение teleop/help
 
 Успех: HTTP **200** или **201**. Ответ **200** с `duplicate: true` — заявка уже открыта, обрабатывается как успех. **401** — неверные `robotId` / `teleopSecret`, ретраи бессмысленны до исправления конфигурации или повторного enroll.
+
+В теле запроса в `metadata` передаются `task_id`, `error_context` и текстовое поле **`situation_report`** (свободное описание состояния и причины эскалации). Контракт для RAID: [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
+
+ROS: сервис `/x402/request_help` (`rospy_x402/RequestHelp`) — третье поле запроса `situation_report`.
 
 ## Входящий WebSocket (rosbridge)
 

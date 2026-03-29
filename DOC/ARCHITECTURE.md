@@ -21,7 +21,7 @@ rospy_x402/
 │   ├── server.py                 # X402RestServer (HTTP + x402 402 handling)
 │   ├── health.py                 # get_health_status (used by /health endpoint)
 │   ├── raid_integration.py       # RAID enroll, state file, operator allowlist JSON
-│   ├── escalation_service.py     # teleop/help to RAID, RequestHelp, mock SessionGrant
+│   ├── escalation_service.py     # teleop/help to RAID, RequestHelp (task_id, error_context, situation_report), mock SessionGrant
 │   ├── demo_actions.py           # Demo callables (move_demo, buy_cola_demo, shoot_demo)
 │   ├── bazaar_cli.py             # Console CLI for x402 Bazaar (search/configure)
 │   └── x402/                     # Reusable x402/Solana library

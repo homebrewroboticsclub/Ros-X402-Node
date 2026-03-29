@@ -57,13 +57,19 @@ class EscalationManager:
         2. Calls RAID_APP
         3. Forwards received SessionGrant to teleop_fetch
         """
-        logger.info(f"Escalation requested for task {req.task_id}")
-        
+        sr_len = len(req.situation_report or "")
+        logger.info(
+            "Escalation requested for task %s (situation_report length=%d chars)",
+            req.task_id,
+            sr_len,
+        )
+
         event = {
             "type": "HelpNeededEvent",
             "timestamp": int(time.time()),
             "task_id": req.task_id,
-            "error_context": req.error_context
+            "error_context": req.error_context,
+            "situation_report": req.situation_report or "",
         }
 
         # Step 1 & 2: Call RAID_APP (Synchronous for simplicity here, could be async)
@@ -109,8 +115,9 @@ class EscalationManager:
             "message": "Need assistance",
             "metadata": {
                 "task_id": event.get("task_id", "unknown"),
-                "error_context": event.get("error_context", "")
-            }
+                "error_context": event.get("error_context", ""),
+                "situation_report": event.get("situation_report", ""),
+            },
         }
 
         logger.info("POST %s ...", url)

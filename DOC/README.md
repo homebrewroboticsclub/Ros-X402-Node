@@ -17,6 +17,7 @@
 ## RAID App (enroll, help, allowlist)
 
 - [RAID_INTEGRATION.md](RAID_INTEGRATION.md) — флот-секрет, enroll, персистентность, sync операторов, параметры ноды `x402_ex_server`.
+- [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md) — контракт `POST …/teleop/help` для разработчиков RAID (в т.ч. поле `situation_report`).
 
 ---
 

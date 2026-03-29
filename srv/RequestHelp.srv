@@ -1,5 +1,7 @@
 string task_id
 string error_context # JSON string with error details
+# Free-text: current robot state, recent actions, why teleop is needed (UTF-8; may be long)
+string situation_report
 ---
 bool success
 string message
