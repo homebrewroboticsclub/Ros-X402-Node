@@ -3,3 +3,7 @@
 *.py[cod]
 __pycache__/
 *.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
