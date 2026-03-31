@@ -73,7 +73,7 @@ rospy_x402/
 - Resolves RAID credentials: rosparam/env → state file `~/.ros/raid_robot_state.json` → optional auto-enroll (`raid_integration.enroll_robot`). Configures operator-sync route on `X402RestServer` when `RAID_TO_ROBOT_SECRET` is set.
 - Loads config and Solana key (prompt), creates `X402RestServer` and starts it in a daemon thread.
 - Advertises `x402_buy_service`: request fields include `endpoint`, `method`, `payload`, `headers_json`, `amount`, `asset_symbol`, `payer_account`. If `payer_account` is set, the node **sends** payment to that address, then calls `endpoint` **only if** `endpoint` is non-empty (otherwise transfer-only). If `payer_account` is empty, the node **creates an incoming payment session** and waits for the caller to pay the robot, then proceeds.
-- Advertises `/x402/complete_teleop_payment`: after KYR `close_session`, `teleop_fetch` passes `receipt_payload`; the node pays `operator_pubkey` in SOL using `teleop_operator_payment.py` and `X402Client.send_payment` (same wallet as outgoing `x402_buy_service`). Rate: rosparam `~teleop_operator_payment_sol_per_sec`.
+- Advertises `/x402/complete_teleop_payment`: after KYR `close_session`, `teleop_fetch` passes `receipt_payload`; the node pays `operator_pubkey` in SOL using `teleop_operator_payment.py` and `X402Client.send_payment` (same wallet as outgoing `x402_buy_service`). Rate: rosparam `~teleop_operator_payment_sol_per_sec`. `send_payment` coerces solana-py’s transaction `Signature` (and any non-`str` RPC result) to an ASCII `str` so the service response field `payment_signature` satisfies ROS genpy serialization.
 
 ### 5. Bazaar CLI (`bazaar_cli.py`)
 
