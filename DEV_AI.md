@@ -28,7 +28,7 @@ ROS 1 (Noetic) пакет: REST API над возможностями робот
 ## Телеоп: help → грант → SOL оператору
 
 - Эскалация: `POST …/teleop/help` (см. `EscalationManager`). Если RAID отдаёт `teleopGrantPayload` + `teleopGrantSignature`, робот передаёт их в KYR; иначе mock-грант. Спека для RAID: [DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
-- После `close_session` телеоп вызывает `/x402/complete_teleop_payment` с `receipt_payload` — перевод SOL на `operator_pubkey` тем же `X402Client`, что и `x402_buy_service`. Роsparam: `~teleop_operator_payment_sol_per_sec` (умолч. `1e-6`).
+- После `close_session` телеоп вызывает `/x402/complete_teleop_payment` с `receipt_payload` — перевод SOL на `operator_pubkey` тем же `X402Client`, что и `x402_buy_service`. Сумма: receipt.`operator_payment_sol` (из гранта RAID) → иначе `~teleop_operator_payment_flat_sol` (в `ecosystem.launch` умолч. **0.0005**) → иначе длительность × `~teleop_operator_payment_sol_per_sec`.
 - Чистый перевод без HTTP к целевому API: `rosservice call /x402_buy_service` с непустым `payer_account` и **пустым** `endpoint`.
 
 ## Peaq claim (RAID + KYR + dataset)

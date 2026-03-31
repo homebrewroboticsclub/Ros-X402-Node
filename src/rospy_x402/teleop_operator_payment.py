@@ -19,9 +19,15 @@ def pay_operator_from_receipt_payload(
     x402_client: Any,
     receipt_payload: str,
     sol_per_sec: float,
+    flat_sol: float = 0.0,
 ) -> Tuple[bool, str, str]:
     """
-    Parse KYR SignedReceipt JSON, compute duration * rate, send SOL to operator_pubkey.
+    Parse KYR SignedReceipt JSON, compute amount, send SOL to operator_pubkey.
+
+    Amount precedence:
+    1) receipt.operator_payment_sol (> 0), e.g. from RAID SessionGrant
+    2) else flat_sol rosparam if > 0 (fixed per session, ignores duration)
+    3) else (ended_at_sec - started_at_sec) * sol_per_sec
 
     Returns (success, message, payment_signature).
     """
@@ -40,10 +46,18 @@ def pay_operator_from_receipt_payload(
     started = int(receipt.get("started_at_sec", 0) or 0)
     ended = int(receipt.get("ended_at_sec", 0) or 0)
     duration_sec = max(ended - started, 0)
-    amount_sol = float(duration_sec) * float(sol_per_sec)
+
+    raw_receipt_pay = receipt.get("operator_payment_sol")
+    amount_sol = 0.0
+    if isinstance(raw_receipt_pay, (int, float)) and float(raw_receipt_pay) > 0:
+        amount_sol = float(raw_receipt_pay)
+    elif flat_sol and float(flat_sol) > 0:
+        amount_sol = float(flat_sol)
+    else:
+        amount_sol = float(duration_sec) * float(sol_per_sec)
 
     if amount_sol <= 0:
-        return True, "Zero payment amount (duration or rate); skipped", "skipped_zero_amount"
+        return True, "Zero payment amount; skipped", "skipped_zero_amount"
 
     try:
         sig = x402_client.send_payment(operator_pubkey, amount_sol)
@@ -52,7 +66,7 @@ def pay_operator_from_receipt_payload(
         return False, str(e), ""
 
     logger.info(
-        "Teleop operator payment: %s SOL for %s sec -> %s (sig=%s)",
+        "Teleop operator payment: %s SOL (duration=%s sec) -> %s (sig=%s)",
         amount_sol,
         duration_sec,
         operator_pubkey,

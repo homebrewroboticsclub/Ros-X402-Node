@@ -470,8 +470,9 @@ def main() -> None:
         req: CompleteTeleopPaymentRequest,
     ) -> CompleteTeleopPaymentResponse:
         rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
+        flat = float(rospy.get_param("~teleop_operator_payment_flat_sol", 0.0))
         ok, msg, sig = pay_operator_from_receipt_payload(
-            rest_server.x402_client, req.receipt_payload, rate
+            rest_server.x402_client, req.receipt_payload, rate, flat_sol=flat
         )
         return CompleteTeleopPaymentResponse(ok, msg, sig)
 

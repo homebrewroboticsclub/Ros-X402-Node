@@ -284,8 +284,9 @@ class EscalationManager:
                 return
 
             rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
+            flat = float(rospy.get_param("~teleop_operator_payment_flat_sol", 0.0))
             ok, msg, _sig = pay_operator_from_receipt_payload(
-                self.x402_client, res.receipt_payload, rate
+                self.x402_client, res.receipt_payload, rate, flat_sol=flat
             )
             if ok:
                 logger.info("close_and_pay: %s", msg)

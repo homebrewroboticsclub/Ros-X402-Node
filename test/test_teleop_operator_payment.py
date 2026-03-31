@@ -46,6 +46,37 @@ class TestTeleopOperatorPayment(unittest.TestCase):
         args = client.send_payment.call_args[0]
         self.assertEqual(args[1], 0.01)  # 10 * 0.001 SOL
 
+    def test_flat_sol_ignores_zero_duration(self):
+        client = MagicMock()
+        client.send_payment.return_value = "txflat"
+        payload = (
+            '{"operator_pubkey":"SoMeValidBase58Key111111111111111111111111111",'
+            '"started_at_sec":9,"ended_at_sec":9}'
+        )
+        ok, msg, sig = pay_operator_from_receipt_payload(
+            client, payload, sol_per_sec=1e-6, flat_sol=0.0005
+        )
+        self.assertTrue(ok)
+        self.assertEqual(sig, "txflat")
+        client.send_payment.assert_called_once_with(
+            "SoMeValidBase58Key111111111111111111111111111", 0.0005
+        )
+
+    def test_receipt_operator_payment_sol_overrides_flat(self):
+        client = MagicMock()
+        client.send_payment.return_value = "tx1"
+        payload = (
+            '{"operator_pubkey":"SoMeValidBase58Key111111111111111111111111111",'
+            '"operator_payment_sol":0.002,"started_at_sec":0,"ended_at_sec":1}'
+        )
+        ok, _, _ = pay_operator_from_receipt_payload(
+            client, payload, sol_per_sec=0.0, flat_sol=0.0005
+        )
+        self.assertTrue(ok)
+        client.send_payment.assert_called_once_with(
+            "SoMeValidBase58Key111111111111111111111111111", 0.002
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
