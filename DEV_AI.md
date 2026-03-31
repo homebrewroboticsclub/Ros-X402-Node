@@ -25,7 +25,13 @@ ROS 1 (Noetic) пакет: REST API над возможностями робот
    При отсутствии зарегистрированных тестов в CMake — добавить `rostest`/`pytest` и включить в `catkin_add_nosetests` или аналог.
 3. **Коммит** — осмысленные сообщения (что изменилось, влияние на API/конфиг).
 
+## Peaq claim (RAID + KYR + dataset)
+
+- Робот шлёт `metadata.kyr_peaq_context` в `teleop/help`, забирает `peaq_claim` (inline или `GET …/peaq/claim`), вызывает `/teleop_fetch/set_peaq_dataset_claim`. Детали: [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md). Спеки RAID/DATA_NODE: `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`, `DATA_NODE_PEAQ_CLAIM_SPEC.md`.
+- Зависимость сборки/рантайма: пакет **KYR** (`GetPeaqIssuanceMetadata`).
+
 ## Полезные ссылки
 
 - [DOC/ARCHITECTURE.md](DOC/ARCHITECTURE.md)
 - [DOC/X402_PROTOCOL.md](DOC/X402_PROTOCOL.md)
+- [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md)

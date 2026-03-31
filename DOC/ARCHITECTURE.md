@@ -21,7 +21,8 @@ rospy_x402/
 │   ├── server.py                 # X402RestServer (HTTP + x402 402 handling)
 │   ├── health.py                 # get_health_status (used by /health endpoint)
 │   ├── raid_integration.py       # RAID enroll, state file, operator allowlist JSON
-│   ├── escalation_service.py     # teleop/help to RAID, RequestHelp (task_id, error_context, situation_report), mock SessionGrant
+│   ├── escalation_service.py     # teleop/help to RAID, KYR peaq context, GET peaq/claim, RequestHelp, mock SessionGrant
+│   ├── raid_peaq_client.py       # HTTP GET peaq claim from RAID (see DOC/PEAQ_RAID_CLAIM.md)
 │   ├── demo_actions.py           # Demo callables (move_demo, buy_cola_demo, shoot_demo)
 │   ├── bazaar_cli.py             # Console CLI for x402 Bazaar (search/configure)
 │   └── x402/                     # Reusable x402/Solana library
@@ -89,5 +90,9 @@ rospy_x402/
 - Implement new callables in `demo_actions` or other modules and reference them in config.
 - Use `X402Client` and `schema` helpers from non-ROS code.
 - Point `--api-url` in Bazaar CLI to a custom discovery API.
+
+## Peaq claim (RAID, optional)
+
+- **EscalationManager** calls `/kyr/get_peaq_issuance_metadata` and embeds the result in `POST …/teleop/help` as `metadata.kyr_peaq_context`. After a successful help response, it reads inline `peaq_claim` or polls `GET /api/robots/{robotId}/peaq/claim`, then calls `/teleop_fetch/set_peaq_dataset_claim`. See [PEAQ_RAID_CLAIM.md](PEAQ_RAID_CLAIM.md) and `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`.
 
 All user-facing strings, logs, comments, and documentation are in English.

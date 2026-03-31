@@ -7,16 +7,25 @@ from typing import Dict, Any, Optional, Tuple
 
 from rospy_x402.srv import RequestHelp, RequestHelpResponse
 
+from rospy_x402.raid_peaq_client import fetch_peaq_claim
+
 # Try to import teleop_fetch services if available, fallback otherwise
 try:
     from teleop_fetch.srv import ReceiveGrant, EndSession
 except ImportError:
-    pass
+    ReceiveGrant = None  # type: ignore
+    EndSession = None  # type: ignore
 
 try:
-    from KYR.srv import CloseSession
+    from teleop_fetch.srv import SetPeaqDatasetClaim
 except ImportError:
-    pass
+    SetPeaqDatasetClaim = None  # type: ignore
+
+try:
+    from KYR.srv import CloseSession, GetPeaqIssuanceMetadata
+except ImportError:
+    CloseSession = None  # type: ignore
+    GetPeaqIssuanceMetadata = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +47,30 @@ class EscalationManager:
             logger.warning("RequestHelp service type not available. Run catkin_make and source.")
         
         # ROS Proxy to teleop_fetch to forward the grant
-        try:
-            self.teleop_grant_proxy = rospy.ServiceProxy('/teleop_fetch/receive_grant', ReceiveGrant)
-        except NameError:
-            self.teleop_grant_proxy = None
-            logger.warning("ReceiveGrant service type not available.")
+        self.teleop_grant_proxy = None
+        if ReceiveGrant is not None:
+            try:
+                self.teleop_grant_proxy = rospy.ServiceProxy("/teleop_fetch/receive_grant", ReceiveGrant)
+            except Exception as e:
+                logger.warning("ReceiveGrant proxy not created: %s", e)
 
         # Subs for session completion to trigger post-pay
-        try:
-            self.kyr_close_proxy = rospy.ServiceProxy('/kyr/close_session', CloseSession)
-        except NameError:
-            self.kyr_close_proxy = None
+        self.kyr_close_proxy = None
+        if CloseSession is not None:
+            try:
+                self.kyr_close_proxy = rospy.ServiceProxy("/kyr/close_session", CloseSession)
+            except Exception as e:
+                logger.warning("CloseSession proxy not created: %s", e)
+
+        self._set_peaq_claim_proxy = None
+        if SetPeaqDatasetClaim is not None:
+            try:
+                self._set_peaq_claim_proxy = rospy.ServiceProxy(
+                    "/teleop_fetch/set_peaq_dataset_claim",
+                    SetPeaqDatasetClaim,
+                )
+            except Exception as e:
+                logger.warning("SetPeaqDatasetClaim proxy not created: %s", e)
 
     def handle_request_help(self, req) -> RequestHelpResponse:
         """
@@ -119,6 +141,9 @@ class EscalationManager:
                 "situation_report": event.get("situation_report", ""),
             },
         }
+        kyr_ctx = self._kyr_peaq_context_dict(event)
+        if kyr_ctx is not None:
+            payload["metadata"]["kyr_peaq_context"] = kyr_ctx
 
         logger.info("POST %s ...", url)
         response = requests.post(url, json=payload, headers=headers, timeout=10.0)
@@ -137,6 +162,13 @@ class EscalationManager:
         else:
             logger.info("RAID teleop/help status=%s", response.status_code)
 
+        try:
+            claim = self._maybe_obtain_peaq_claim(data)
+            if claim:
+                self._push_peaq_claim_to_dataset(claim)
+        except Exception as e:
+            logger.warning("peaq claim fetch/merge skipped (fail-open): %s", e)
+
         # Temporary solution: Since RAID currently returns only the helpRequest and not a signed
         # cryptographic grant, we generate a mock valid SessionGrant here to satisfy KYR.
         # In the future, this data (and its signature) will come directly from RAID.
@@ -154,6 +186,57 @@ class EscalationManager:
         dummy_sig = "dummy_signature_base58_encoded"
 
         return payload_str, dummy_sig
+
+    def _kyr_peaq_context_dict(self, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if GetPeaqIssuanceMetadata is None:
+            return None
+        try:
+            rospy.wait_for_service("/kyr/get_peaq_issuance_metadata", timeout=2.0)
+            proxy = rospy.ServiceProxy("/kyr/get_peaq_issuance_metadata", GetPeaqIssuanceMetadata)
+            res = proxy(
+                task_id=str(event.get("task_id", "") or ""),
+                error_context=str(event.get("error_context", "") or ""),
+            )
+            if not res.success or not (res.context_json or "").strip():
+                logger.warning("KYR get_peaq_issuance_metadata: %s", res.message)
+                return None
+            return json.loads(res.context_json)
+        except (rospy.ROSException, rospy.ServiceException, json.JSONDecodeError) as e:
+            logger.warning("Could not load kyr_peaq_context: %s", e)
+            return None
+
+    def _maybe_obtain_peaq_claim(self, help_response: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not rospy.get_param("~raid_peaq_claim_enabled", True):
+            return None
+        help_id = help_response.get("id")
+        if not help_id:
+            return None
+        inline = help_response.get("peaq_claim")
+        if isinstance(inline, dict):
+            return inline
+        return fetch_peaq_claim(
+            self.raid_app_url,
+            self.robot_id,
+            self.teleop_secret,
+            str(help_id),
+            timeout_sec=float(rospy.get_param("~raid_peaq_claim_timeout_sec", 10.0)),
+            poll_attempts=int(rospy.get_param("~raid_peaq_claim_poll_attempts", 3)),
+            poll_delay_sec=float(rospy.get_param("~raid_peaq_claim_poll_delay_sec", 1.0)),
+        )
+
+    def _push_peaq_claim_to_dataset(self, claim: Dict[str, Any]) -> None:
+        if not claim or not self._set_peaq_claim_proxy:
+            return
+        try:
+            claim_json = json.dumps(claim, ensure_ascii=False)
+            rospy.wait_for_service("/teleop_fetch/set_peaq_dataset_claim", timeout=2.0)
+            res = self._set_peaq_claim_proxy(claim_json=claim_json, dataset_id="")
+            if res.success:
+                logger.info("peaq claim merged into dataset metadata")
+            else:
+                logger.warning("set_peaq_dataset_claim: %s", res.message)
+        except (rospy.ROSException, rospy.ServiceException) as e:
+            logger.warning("set_peaq_dataset_claim failed: %s", e)
 
     def close_and_pay(self, session_id: str, reason: str = "completed"):
         """

@@ -18,6 +18,7 @@
 
 - [RAID_INTEGRATION.md](RAID_INTEGRATION.md) — флот-секрет, enroll, персистентность, sync операторов, параметры ноды `x402_ex_server`.
 - [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md) — контракт `POST …/teleop/help` для разработчиков RAID (в т.ч. поле `situation_report`).
+- [PEAQ_RAID_CLAIM.md](PEAQ_RAID_CLAIM.md) — peaq-клейм через RAID: KYR context, HTTP GET, merge в датасет; см. спеки в `br-vr-dev-sinc/DOC/`.
 
 ---
 
