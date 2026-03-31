@@ -14,6 +14,10 @@
 
 - [ARCHITECTURE_DIAGRAMS.md](ARCHITECTURE_DIAGRAMS.md) — Mermaid: потоки и верификация.
 
+## Планирование / спринт (робот-воркспейс)
+
+- [SPRINT_STATUS_ROS_WORKSPACE.md](SPRINT_STATUS_ROS_WORKSPACE.md) — какие семафоры и тесты относятся к rospy_x402 и что проверено автотестами.
+
 ## RAID App (enroll, help, allowlist)
 
 - [RAID_INTEGRATION.md](RAID_INTEGRATION.md) — флот-секрет, enroll, персистентность, sync операторов, параметры ноды `x402_ex_server`.

@@ -13,7 +13,7 @@ ROS 1 (Noetic) пакет: REST API над возможностями робот
 - `.gitignore` — дополнительно к `.env` и bytecode: venv, `.pytest_cache/`, `.mypy_cache/`.
 - Нода: `scripts/x402_ex_server.py` → модули в `src/rospy_x402/` (`server.py`, `config.py`, `x402/*`, демо-callables).
 - Конфиг эндпоинтов: `config/endpoints.example.json`.
-- Документация: [DOC/README.md](DOC/README.md).
+- Документация: [DOC/README.md](DOC/README.md). Спринт vs зона rospy_x402: [DOC/SPRINT_STATUS_ROS_WORKSPACE.md](DOC/SPRINT_STATUS_ROS_WORKSPACE.md).
 
 ## Обязанности при правках
 
