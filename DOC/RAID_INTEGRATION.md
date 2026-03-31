@@ -78,6 +78,21 @@
 
 ROS: сервис `/x402/request_help` (`rospy_x402/RequestHelp`) — третье поле запроса `situation_report`.
 
+## Оплата оператору: сессия закрыта, балансы SOL не изменились
+
+Цепочка **`/teleop_fetch/end_session`** → `close_session` → **`/x402/complete_teleop_payment`** может завершиться **без перевода в сеть**:
+
+1. **Частая причина:** до обновления RAID робот использует **mock-грант** с `operator_pubkey: "pending_from_raid"`. В **SignedReceipt** то же значение — `pay_operator_from_receipt_payload` **намеренно не шлёт SOL** (защита от отправки на невалидный адрес). Нужен ответ RAID с **`teleopGrantPayload` / подпись** и реальным **Solana base58** оператора ([RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md)).
+2. **Логи:** после правок `teleop_fetch` пишет **WARN** `complete_teleop_payment: success but NO on-chain transfer` и в логах `rospy_x402` — `Operator payment skipped: receipt has placeholder operator_pubkey`. В логах `x402_ex_server` ищите `Sent x402 payment` / ошибки RPC.
+3. **Проверка кошелька и RPC:** на кошельке робота должны быть **SOL** (сумма + комиссия), в `.env` / launch — рабочий **`SOLANA_PRIVATE_KEY`** и RPC (например Helius).
+4. **Ручной тест перевода** (подставьте реальный pubkey оператора, одна строка JSON в `receipt_payload`):
+
+```bash
+rosservice call /x402/complete_teleop_payment "receipt_payload: '{\"operator_pubkey\":\"<OPERATOR_BASE58>\",\"started_at_sec\":0,\"ended_at_sec\":10}'"
+```
+
+При настроенном `teleop_operator_payment_flat_sol` на ноде `x402_server` уйдёт фиксированная сумма независимо от полей времени в JSON.
+
 ## Входящий WebSocket (rosbridge)
 
 JWT оператора до rosbridge не доходит; RAID пробрасывает заголовки/query с UUID оператора. Стандартный rosbridge их не проверяет — см. [ROSBRIDGE_AND_RAID.md](../../br-kyr/DOC/ROSBRIDGE_AND_RAID.md) в KYR.

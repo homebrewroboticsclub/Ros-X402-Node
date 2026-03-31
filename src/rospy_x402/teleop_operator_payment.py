@@ -41,6 +41,11 @@ def pay_operator_from_receipt_payload(
 
     operator_pubkey = str(receipt.get("operator_pubkey", "") or "").strip()
     if operator_pubkey.lower() in {x.lower() for x in SKIP_OPERATOR_PUBKEYS}:
+        logger.warning(
+            "Operator payment skipped: receipt has placeholder operator_pubkey=%r — "
+            "RAID must return a signed SessionGrant with a real Solana base58 address.",
+            operator_pubkey or "(empty)",
+        )
         return True, "No valid operator Solana pubkey in receipt; payment skipped", ""
 
     started = int(receipt.get("started_at_sec", 0) or 0)
