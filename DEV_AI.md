@@ -8,6 +8,8 @@ Launch, RAID, common commands, doc index: **[../br_bringup/DEV_AI.md](../br_brin
 
 ROS 1 (Noetic) package: REST API over robot capabilities with **x402** (Solana) payment, ROS outgoing payment service, library `rospy_x402.x402`.
 
+**Language (agents):** use **English** in this repository (code, comments, `DOC/`, operator-facing messages). In **chat**, answer in **Russian** when the human writes in Russian. Details: [../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md](../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md), workspace `.cursor/rules/project-context.mdc`.
+
 ## Layout
 
 - `.gitignore` — besides `.env` and bytecode: venv, `.pytest_cache/`, `.mypy_cache/`, IDE, `*.log`. Publishing: [../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md](../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md).
