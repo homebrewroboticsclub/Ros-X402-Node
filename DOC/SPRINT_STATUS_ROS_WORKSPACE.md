@@ -1,66 +1,66 @@
-# Спринт: семафоры и тесты — зона ответственности **rospy_x402**
+# Sprint: semaphores and tests — **rospy_x402** ownership
 
-Состояние на **2026-03-31**. Пакет закрывает **ROS-интеграцию x402, RAID HTTP, эскалацию телеопа, пост-оплату оператору** и дополнительное логирование в `~/.kyr/dashboard_events.jsonl`. Облачные таблицы receipts/incidents, Hugging Face, quality score, внешняя БД инцидентов — **вне репозитория**.
+Status as of **2026-03-31**. This package covers **ROS x402 integration, RAID HTTP, teleop escalation, post-operator SOL payment**, and extra logging to `~/.kyr/dashboard_events.jsonl`. Cloud receipts/incidents tables, Hugging Face, quality score, external incident DB — **out of repo**.
 
-## Краткий вывод
+## Summary
 
-| Категория | Комментарий |
-|-----------|-------------|
-| Реализовано | `EscalationManager`: `POST …/teleop/help`, poll `session-grant`, передача grant в `teleop_fetch`, optional Peaq claim → `set_peaq_dataset_claim`, события в dashboard log; RAID клиенты, тесты эскалации |
-| Частично | П.7 (`raid_task_id` / `payment_id` в SessionRecord): на роботе есть `task_id` в grant/event и цепочка x402; **именованные поля спринта в облачном SessionRecord** — зона Backend/DATA_NODE |
-| Не реализовано в репо | REST `GET /api/v1/receipts`, связь receipt↔incident, авто `TELEOP_TAKEOVER`, инциденты, RTT gate, Cosmos, recovery extractor, HF, 500+ external incidents |
-
----
-
-## Семафоры → rospy_x402
-
-| # | Deliverable | Роль пакета | Статус |
-|---|-------------|-------------|--------|
-| 1 | Receipt emission service | x402 REST — **платежи/робот-демо**, не облачный receipt CRUD | **Н/Д** как HTTP receipts API; пересечение с KYR receipt только через `close_session` / оплату |
-| 2 | Receipt–incident | Нет | **Н/Д** |
-| 3 | Event↔recording | Косвенно: эскалация несёт `task_id`, датасет — в teleop_fetch | **Частично** только как данные для downstream |
-| 4 | `TELEOP_TAKEOVER` авто | Нет публикации такого события в облако из rospy_x402 | **Не реализовано** |
-| 5 | Incident auto-generation | Нет | **Н/Д** |
-| 6 | RTT preflight | Нет | **Н/Д** |
-| 7 | `raid_task_id` + `payment_id` | Grant/RAID контекст; merge Peaq в metadata — см. `escalation_service`, `PEAQ_RAID_CLAIM.md` | **🟡 PARTIAL**: робот/RAID; облачный SessionRecord — вне репо |
-| 8 | KYR stats | Нет эндпоинта облака | **Н/Д** |
-| 9–11 | Handoff / VR | Нет | **Н/Д** |
-| 17 | peaq ClaimRegistry real calls | HTTP GET peaq claim, proxy в датасет | **🟡**: реализована **робот-часть**; `claim_id` в облачном SessionRecord — Backend |
-
-Остальные пункты (12–16, 18–21, 22 тесты 12–24) — **не rospy_x402**.
+| Category | Comment |
+|----------|---------|
+| Implemented | `EscalationManager`: `POST …/teleop/help`, `session-grant` poll, grant handoff to `teleop_fetch`, optional Peaq claim → `set_peaq_dataset_claim`, dashboard log events; RAID clients, escalation tests |
+| Partial | Item 7 (`raid_task_id` / `payment_id` in SessionRecord): robot has `task_id` in grant/event and x402 chain; **sprint-named fields in cloud SessionRecord** — Backend/DATA_NODE |
+| Not in repo | REST `GET /api/v1/receipts`, receipt↔incident link, auto `TELEOP_TAKEOVER`, incidents, RTT gate, Cosmos, recovery extractor, HF, 500+ external incidents |
 
 ---
 
-## Тесты спринта → rospy_x402
+## Semaphores → rospy_x402
 
-| # | Тест | Статус |
+| # | Deliverable | Package role | Status |
+|---|-------------|--------------|--------|
+| 1 | Receipt emission service | x402 REST — **payments/robot demo**, not cloud receipt CRUD | **N/A** as HTTP receipts API; overlap with KYR receipt via `close_session` / payment only |
+| 2 | Receipt–incident | None | **N/A** |
+| 3 | Event↔recording | Indirect: escalation carries `task_id`, dataset in teleop_fetch | **Partial** as downstream data only |
+| 4 | `TELEOP_TAKEOVER` auto | No such cloud event from rospy_x402 | **Not implemented** |
+| 5 | Incident auto-generation | None | **N/A** |
+| 6 | RTT preflight | None | **N/A** |
+| 7 | `raid_task_id` + `payment_id` | Grant/RAID context; Peaq merge in metadata — see `escalation_service`, `PEAQ_RAID_CLAIM.md` | **🟡 PARTIAL**: robot/RAID; cloud SessionRecord — out of repo |
+| 8 | KYR stats | No cloud endpoint | **N/A** |
+| 9–11 | Handoff / VR | None | **N/A** |
+| 17 | peaq ClaimRegistry real calls | HTTP GET peaq claim, proxy to dataset | **🟡**: **robot side** done; `claim_id` in cloud SessionRecord — Backend |
+
+Other items (12–16, 18–21, 22 tests 12–24) — **not rospy_x402**.
+
+---
+
+## Sprint tests → rospy_x402
+
+| # | Test | Status |
 |---|------|--------|
-| 1–6, 8–16, 18–24 | Требуют облако / VR / датасеты / HF | **Н/Д** или ручная интеграция вне пакета |
-| 7 | `raid_task_id` / `payment_id` в session | Проверка через реальный upload в DATA_NODE и содержимое `metadata.json` / API — **не покрыта unit-тестами rospy_x402** |
-| 17 | peaq claim в SessionRecord | Аналогично: робот кладёт claim в metadata path (teleop_fetch); облачная запись — вне репо |
+| 1–6, 8–16, 18–24 | Need cloud / VR / datasets / HF | **N/A** or manual integration outside package |
+| 7 | `raid_task_id` / `payment_id` in session | Real DATA_NODE upload + `metadata.json` / API — **not covered by rospy_x402 unit tests** |
+| 17 | peaq claim in SessionRecord | Same: robot writes claim path (teleop_fetch); cloud record — out of repo |
 
 ---
 
-## Автотесты пакета rospy_x402
+## rospy_x402 automated tests
 
-Прогон **2026-03-31**:
+Run **2026-03-31**:
 
 ```bash
 cd /home/ubuntu/ros_ws && source devel/setup.bash
 catkin build rospy_x402 --no-status --catkin-make-args run_tests
 ```
 
-Результат: **34 tests OK** (`test_escalation_service`, `test_raid_*`, `test_dashboard_events_log`, и др.).
+Result: **34 tests OK** (`test_escalation_service`, `test_raid_*`, `test_dashboard_events_log`, etc.).
 
 ---
 
-## Логи окружения
+## Environment logs
 
-В `~/.kyr/dashboard_events.jsonl` фиксировались виды: `help_request_start`, `help_raid_post_ok`, `grant_poll_ok` / `grant_inline_ok`, `grant_mock_fallback`, `session_close` (от KYR) — **без** `TELEOP_TAKEOVER`.
+`~/.kyr/dashboard_events.jsonl` may contain: `help_request_start`, `help_raid_post_ok`, `grant_poll_ok` / `grant_inline_ok`, `grant_mock_fallback`, `session_close` (from KYR) — **no** `TELEOP_TAKEOVER`.
 
 ---
 
-## Замечания для PM / Backend
+## Notes for PM / Backend
 
-- Спринтовый **Receipt emission** (таблица + HMAC + GET) — отдельный сервис; rospy_x402 даёт **x402 payment flow** и **связку с RAID**, а не CRUD receipts.
-- Для п.7 и теста 7 нужна явная сверка полей **`task_id` из RAID** vs **`raid_task_id` / `payment_id`** в контракте DATA_NODE (см. документацию teleop_fetch и Backend).
+- Sprint **Receipt emission** (table + HMAC + GET) is a separate service; rospy_x402 provides **x402 payment flow** and **RAID linkage**, not receipt CRUD.
+- For item 7 and test 7, align **`task_id` from RAID** vs **`raid_task_id` / `payment_id`** in DATA_NODE contract (see teleop_fetch docs and Backend).

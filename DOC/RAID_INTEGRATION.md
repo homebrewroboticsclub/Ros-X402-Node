@@ -1,98 +1,98 @@
-# Интеграция с RAID App (робот)
+# RAID App integration (robot)
 
-Контракты HTTP на стороне RAID описаны в репозитории `x402_raid_app`. Здесь — что делает пакет **rospy_x402** и какие параметры задавать.
+HTTP contracts on the RAID side are described in the `x402_raid_app` repository. Here: what **`rospy_x402`** does and which parameters to set.
 
-## Порядок шагов
+## Step order
 
-1. **Enroll (A)** — `POST /api/robots/enroll` с флот-секретом; в ответе `id` (robot UUID) и `teleopSecret`. При повторе с тем же `enrollmentKey` запись обновляется, `id` стабилен.
-2. **Help (B)** — `POST /api/robots/{robotId}/teleop/help` с `X-Robot-Teleop-Secret` (реализовано в `EscalationManager`). Тело JSON и поле `metadata.situation_report`: см. [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
-3. **Push allowlist (опционально)** — RAID вызывает **точный** URL из `operatorRegistryUrl` при sync: `POST` с заголовком `X-Raid-To-Robot-Secret` и телом `{"allowedTeleoperatorIds": ["uuid", ...]}`. Внешняя спецификация: `ROBOT_OPERATOR_SYNC.md` в RAID.
+1. **Enroll (A)** — `POST /api/robots/enroll` with fleet secret; response has `id` (robot UUID) and `teleopSecret`. Repeating with the same `enrollmentKey` updates the row; `id` stays stable.
+2. **Help (B)** — `POST /api/robots/{robotId}/teleop/help` with `X-Robot-Teleop-Secret` (implemented in `EscalationManager`). JSON body and `metadata.situation_report`: [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
+3. **Push allowlist (optional)** — RAID calls the **exact** URL from `operatorRegistryUrl` on sync: `POST` with header `X-Raid-To-Robot-Secret` and body `{"allowedTeleoperatorIds": ["uuid", ...]}`. External spec: `ROBOT_OPERATOR_SYNC.md` in RAID.
 
-Если на RAID **не задан** `ROBOT_FLEET_ENROLLMENT_SECRET`, enroll вернёт **503** — это конфигурация сервера.
+If RAID has **no** `ROBOT_FLEET_ENROLLMENT_SECRET`, enroll returns **503** — server configuration.
 
-## Когда робот саморегистрируется (авто-enroll)
+## When the robot self-registers (auto-enroll)
 
-Запрос **выполняется один раз при старте** ноды `x402_ex_server`, **до** поднятия HTTP-сервера x402, и **только если** после шагов ниже всё ещё нет пары `robotId` + `teleopSecret`:
+The request runs **once at startup** of `x402_ex_server`, **before** the x402 HTTP server starts, and **only if** after the checks below there is still no `robotId` + `teleopSecret` pair:
 
-1. Взяты непустые `~raid_robot_id` и `~raid_teleop_secret` (или `RAID_ROBOT_ID` / `RAID_TELEOP_SECRET` в окружении) — тогда enroll **не** вызывается.
-2. Иначе прочитан `~/.ros/raid_robot_state.json` (или `RAID_STATE_FILE`) — если там есть `id` и `teleopSecret`, enroll **не** вызывается.
-3. Иначе, если заданы **и** флот-секрет **и** `RAID_ENROLLMENT_KEY` **и** `raid_enroll_host` / `RAID_ENROLL_HOST`, выполняется `POST …/api/robots/enroll`.
+1. Non-empty `~raid_robot_id` and `~raid_teleop_secret` (or `RAID_ROBOT_ID` / `RAID_TELEOP_SECRET` in env) — then enroll is **not** called.
+2. Else read `~/.ros/raid_robot_state.json` (or `RAID_STATE_FILE`) — if it has `id` and `teleopSecret`, enroll is **not** called.
+3. Else, if **both** fleet secret **and** `RAID_ENROLLMENT_KEY` **and** `raid_enroll_host` / `RAID_ENROLL_HOST` are set, run `POST …/api/robots/enroll`.
 
-Повторный старт с уже сохранённым state **не** дергает RAID для enroll, пока вы не удалите файл состояния и не сбросите rosparam.
+Restart with saved state does **not** hit RAID for enroll until you delete the state file and reset rosparam.
 
-### Уже зарегистрирован в RAID (тот же `enrollmentKey`)
+### Already registered on RAID (same `enrollmentKey`)
 
-На стороне RAID enroll **идемпотентен**: тот же ключ обновляет ту же запись, **`id` не меняется**. Наша нода при **успешном** enroll всегда перезаписывает state-файл актуальными `id` и `teleopSecret` из ответа (если RAID вернёт новый `teleopSecret`, он сохранится).
+On RAID enroll is **idempotent**: same key updates the same row, **`id` unchanged**. Our node on **successful** enroll always overwrites the state file with current `id` and `teleopSecret` from the response (if RAID returns a new `teleopSecret`, it is saved).
 
-Если робот **не** вызывает enroll (потому что кредиты уже из launch или из state), а вы на RAID сменили секреты или удалили робота, старый `teleopSecret` в state может стать невалидным — тогда нужно либо выставить новые значения в launch/env, либо удалить state и перезапустить ноду при доступном RAID (и корректном `ROBOT_FLEET_ENROLLMENT_SECRET`).
+If the robot **does not** call enroll (credentials from launch or state) but you rotated secrets or deleted the robot on RAID, the old `teleopSecret` in state may be invalid — set new values in launch/env or delete state and restart the node while RAID is reachable (with correct `ROBOT_FLEET_ENROLLMENT_SECRET`).
 
-### RAID недоступен
+### RAID unreachable
 
-| Ситуация | Поведение |
-|----------|-----------|
-| **Первый** запуск: нет state, enroll нужен, RAID не отвечает | В логе `RAID enroll failed: …`. Пара `robotId`/`teleopSecret` остаётся пустой; нода всё равно стартует. `teleop/help` и эскалация будут падать, пока не появятся кредиты (ручной ввод, успешный enroll позже). |
-| **Повторный** запуск: state на диске уже есть, enroll не вызывается | Старт без обращения к RAID. Кредиты для help берутся из файла. **Вызов** `teleop/help` к RAID при эскалации всё равно требует, чтобы RAID был доступен в момент вызова. |
-| Первый запуск: enroll упал, **потом** RAID снова доступен | Перезапустите `x402_ex_server` (или весь launch): при отсутствии валидной пары снова попытка enroll. Либо один раз задайте `raid_robot_id` / `raid_teleop_secret` вручную. |
+| Situation | Behaviour |
+|-----------|-----------|
+| **First** start: no state, enroll needed, RAID down | Log `RAID enroll failed: …`. `robotId`/`teleopSecret` stay empty; node still starts. `teleop/help` and escalation fail until credentials exist (manual entry or successful enroll later). |
+| **Subsequent** start: state on disk, enroll skipped | Start without RAID. Help credentials come from file. **Calling** `teleop/help` during escalation still needs RAID **at call time**. |
+| First start: enroll failed, **later** RAID is up | Restart `x402_ex_server` (or full launch): retry enroll if no valid pair. Or set `raid_robot_id` / `raid_teleop_secret` once manually. |
 
-Ретраев с backoff при старте **нет** — одна попытка enroll за запуск. При необходимости backoff добавляют на уровне systemd/скрипта обёртки.
+There is **no** startup retry/backoff — one enroll attempt per launch; add backoff in systemd/wrapper if needed.
 
-Пример значений для тестового стенда (должны совпадать с `.env` на сервере RAID): см. [`.env.example`](../.env.example) в пакете `rospy_x402` (`ROBOT_FLEET_ENROLLMENT_SECRET`, `RAID_TO_ROBOT_SECRET`).
+Example values for a test rig (must match RAID `.env`): see [`.env.example`](../.env.example) in `rospy_x402` (`ROBOT_FLEET_ENROLLMENT_SECRET`, `RAID_TO_ROBOT_SECRET`).
 
-## Персистентность
+## Persistence
 
-По умолчанию файл состояния: `~/.ros/raid_robot_state.json` (поля `id`, `teleopSecret`). Переопределение: переменная окружения `RAID_STATE_FILE` или rosparam `~raid_state_file`.
+Default state file: `~/.ros/raid_robot_state.json` (`id`, `teleopSecret`). Override: env `RAID_STATE_FILE` or rosparam `~raid_state_file`.
 
-Список операторов после sync: `~/.ros/raid_operator_allowlist.json` (рядом со state), либо `RAID_ALLOWLIST_FILE` / `~raid_allowlist_file`.
+Operator list after sync: `~/.ros/raid_operator_allowlist.json` (next to state), or `RAID_ALLOWLIST_FILE` / `~raid_allowlist_file`.
 
-## Приоритет учётных данных
+## Credential priority
 
-1. Непустые rosparam `~raid_robot_id` и `~raid_teleop_secret` (и/или `RAID_ROBOT_ID`, `RAID_TELEOP_SECRET` в окружении).
-2. Иначе чтение сохранённого state-файла.
-3. Иначе **авто-enroll**, если заданы **оба**: `ROBOT_FLEET_ENROLLMENT_SECRET` (или `~robot_fleet_enrollment_secret`) и `RAID_ENROLLMENT_KEY` (или `~raid_enrollment_key`), плюс **LAN-доступный** `~raid_enroll_host` / `RAID_ENROLL_HOST` (тот же адрес, по которому RAID достучится до HTTP робота, например до `GET /health` на порту REST x402).
+1. Non-empty rosparam `~raid_robot_id` and `~raid_teleop_secret` (and/or `RAID_ROBOT_ID`, `RAID_TELEOP_SECRET` in env).
+2. Else read saved state file.
+3. Else **auto-enroll** if **both** `ROBOT_FLEET_ENROLLMENT_SECRET` (or `~robot_fleet_enrollment_secret`) **and** `RAID_ENROLLMENT_KEY` (or `~raid_enrollment_key`), plus **LAN-reachable** `~raid_enroll_host` / `RAID_ENROLL_HOST` (same address RAID uses to reach robot HTTP, e.g. `GET /health` on x402 REST port).
 
-## Таблица параметров и env
+## Parameters and env table
 
-| Имя | Назначение |
-|-----|------------|
-| `~raid_app_url` / `RAID_APP_URL` / база URL | Все вызовы к RAID. Приоритет: непустой rosparam, иначе `RAID_APP_URL` из `.env`, иначе умолчание `http://raid-app.local:3000`. Если mDNS недоступен, задайте IP в launch или `.env`, например `http://192.168.1.100:3000`. |
-| `ROBOT_FLEET_ENROLLMENT_SECRET` / `~robot_fleet_enrollment_secret` | Только enroll и прочие мутации `/api/robots` с флот-авторизацией на стороне RAID. |
-| `RAID_ENROLLMENT_KEY` / `~raid_enrollment_key` | Стабильный ключ устройства (идемпотентный enroll). |
-| `~raid_enroll_host`, `RAID_ENROLL_HOST` | Хост в теле enroll (`host`) — не `localhost`, если RAID на другой машине. |
-| `~raid_enroll_http_port` | Порт HTTP робота в теле enroll (`port`); по умолчанию совпадает с портом REST x402 из `endpoints` JSON. |
-| `~raid_enroll_rosbridge_host`, `~raid_enroll_rosbridge_port` | Поля `rosbridgeHost` / `rosbridgePort` в enroll (по умолчанию хост как у HTTP, порт **9090**). |
-| `~raid_robot_name` | Опционально `name` в enroll. |
-| `RAID_TO_ROBOT_SECRET` / `~raid_to_robot_secret` | Проверка входящего `X-Raid-To-Robot-Secret` на эндпоинте sync. |
-| `~raid_operator_sync_path` | Путь POST на REST x402 (по умолчанию `/raid/operator-allowlist`). Полный `operatorRegistryUrl` при enroll: `http://<raid_enroll_host>:<raid_enroll_http_port><path>`. |
+| Name | Purpose |
+|------|---------|
+| `~raid_app_url` / `RAID_APP_URL` / base URL | All RAID calls. Priority: non-empty rosparam, else `RAID_APP_URL` from `.env`, else default `http://raid-app.local:3000`. If mDNS fails, set IP in launch or `.env`, e.g. `http://192.168.1.100:3000`. |
+| `ROBOT_FLEET_ENROLLMENT_SECRET` / `~robot_fleet_enrollment_secret` | Enroll and other `/api/robots` mutations requiring fleet auth on RAID. |
+| `RAID_ENROLLMENT_KEY` / `~raid_enrollment_key` | Stable device key (idempotent enroll). |
+| `~raid_enroll_host`, `RAID_ENROLL_HOST` | `host` field in enroll body — not `localhost` if RAID is on another machine. |
+| `~raid_enroll_http_port` | Robot HTTP port in enroll body (`port`); default matches x402 REST port from `endpoints` JSON. |
+| `~raid_enroll_rosbridge_host`, `~raid_enroll_rosbridge_port` | `rosbridgeHost` / `rosbridgePort` in enroll (default HTTP host, port **9090**). |
+| `~raid_robot_name` | Optional `name` in enroll. |
+| `RAID_TO_ROBOT_SECRET` / `~raid_to_robot_secret` | Validates inbound `X-Raid-To-Robot-Secret` on sync endpoint. |
+| `~raid_operator_sync_path` | POST path on robot REST (default `/raid/operator-allowlist`). Full `operatorRegistryUrl` at enroll: `http://<raid_enroll_host>:<raid_enroll_http_port><path>`. |
 
-Секреты **не** коммитить; использовать `~/.rospy_x402.env`, `ROSPY_X402_ENV_FILE` или systemd `Environment=`.
+Do **not** commit secrets; use `~/.rospy_x402.env`, `ROSPY_X402_ENV_FILE`, or systemd `Environment=`.
 
-**Почему нет enroll в логах:** файл `rospy_x402/.env` в `.gitignore` — на роботе после `git pull` его нет, пока не скопируете с машины разработки или не создадите из `.env.example`. Нужен пакет **python3-dotenv** (`sudo apt install python3-dotenv`). Нода мержит несколько `.env` подряд (пакет `config/.env`, пакет `.env`, cwd, `~/.rospy_x402.env`, `ROSPY_X402_ENV_FILE` — последний побеждает). Либо перед `roslaunch` выполните `export ROBOT_FLEET_ENROLLMENT_SECRET=...` и т.д. — дочерний процесс унаследует окружение.
+**Why no enroll in logs:** `rospy_x402/.env` is gitignored — after `git pull` copy from dev or create from `.env.example`. Install **python3-dotenv** (`sudo apt install python3-dotenv`). The node merges several `.env` sources (package `config/.env`, package `.env`, cwd, `~/.rospy_x402.env`, `ROSPY_X402_ENV_FILE` — last wins). Or `export ROBOT_FLEET_ENROLLMENT_SECRET=...` before `roslaunch` — child inherits.
 
-## Поведение teleop/help
+## `teleop/help` behaviour
 
-Успех: HTTP **200** или **201**. Ответ **200** с `duplicate: true` — заявка уже открыта, обрабатывается как успех. **401** — неверные `robotId` / `teleopSecret`, ретраи бессмысленны до исправления конфигурации или повторного enroll.
+Success: HTTP **200** or **201**. **200** with `duplicate: true` — request already open, treated as success. **401** — bad `robotId` / `teleopSecret`, retries useless until config or re-enroll.
 
-В теле запроса в `metadata` передаются `task_id`, `error_context` и текстовое поле **`situation_report`** (свободное описание состояния и причины эскалации). Контракт для RAID: [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
+Request `metadata` carries `task_id`, `error_context`, and **`situation_report`** (free-text escalation context). RAID contract: [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
 
-Если в JSON ответа **`POST …/teleop/help`** сразу есть **`teleopGrantPayload`** + **`teleopGrantSignature`**, робот передаёт их в KYR. Иначе, при наличии **`id`** заявки и **`~raid_session_grant_poll`**, робот **поллит** `GET …/teleop/session-grant?helpRequestId=…` (после Accept оператора в RAID). При успехе — тот же поток в KYR. Иначе — фолбэк mock. Порядок шагов и ошибки RAID: [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md). Полный цикл: [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
+If **`POST …/teleop/help`** JSON already has **`teleopGrantPayload`** + **`teleopGrantSignature`**, the robot forwards them to KYR. Else, with request **`id`** and **`~raid_session_grant_poll`**, the robot **polls** `GET …/teleop/session-grant?helpRequestId=…` (after operator Accept on RAID). On success — same path into KYR. Else — mock fallback. Step order and RAID errors: [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md). Full cycle: [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
 
-ROS: сервис `/x402/request_help` (`rospy_x402/RequestHelp`) — третье поле запроса `situation_report`.
+ROS: service `/x402/request_help` (`rospy_x402/RequestHelp`) — third field `situation_report`.
 
-## Оплата оператору: сессия закрыта, балансы SOL не изменились
+## Operator payment: session closed but SOL balances unchanged
 
-Цепочка **`/teleop_fetch/end_session`** → `close_session` → **`/x402/complete_teleop_payment`** может завершиться **без перевода в сеть**:
+Chain **`/teleop_fetch/end_session`** → `close_session` → **`/x402/complete_teleop_payment`** may finish **without** an on-chain transfer:
 
-1. **Частая причина:** до обновления RAID робот использует **mock-грант** с `operator_pubkey: "pending_from_raid"`. В **SignedReceipt** то же значение — `pay_operator_from_receipt_payload` **намеренно не шлёт SOL** (защита от отправки на невалидный адрес). Нужен ответ RAID с **`teleopGrantPayload` / подпись** и реальным **Solana base58** оператора ([RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md)).
-2. **Логи:** после правок `teleop_fetch` пишет **WARN** `complete_teleop_payment: success but NO on-chain transfer` и в логах `rospy_x402` — `Operator payment skipped: receipt has placeholder operator_pubkey`. В логах `x402_ex_server` ищите `Sent x402 payment` / ошибки RPC.
-3. **Проверка кошелька и RPC:** на кошельке робота должны быть **SOL** (сумма + комиссия), в `.env` / launch — рабочий **`SOLANA_PRIVATE_KEY`** и RPC (например Helius).
-4. **Ручной тест перевода** (подставьте реальный pubkey оператора, одна строка JSON в `receipt_payload`):
+1. **Common cause:** before RAID was updated the robot used a **mock grant** with `operator_pubkey: "pending_from_raid"`. **SignedReceipt** has the same — `pay_operator_from_receipt_payload` **intentionally skips** SOL (invalid address guard). You need RAID **`teleopGrantPayload` / signature** with real operator **Solana base58** ([RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md)).
+2. **Logs:** after teleop_fetch changes, **WARN** `complete_teleop_payment: success but NO on-chain transfer` and in rospy_x402 `Operator payment skipped: receipt has placeholder operator_pubkey`. In `x402_ex_server` logs look for `Sent x402 payment` / RPC errors.
+3. **Wallet and RPC:** robot wallet needs **SOL** (amount + fee), `.env` / launch needs working **`SOLANA_PRIVATE_KEY`** and RPC (e.g. Helius).
+4. **Manual transfer test** (real operator pubkey, one-line JSON in `receipt_payload`):
 
 ```bash
 rosservice call /x402/complete_teleop_payment "receipt_payload: '{\"operator_pubkey\":\"<OPERATOR_BASE58>\",\"started_at_sec\":0,\"ended_at_sec\":10}'"
 ```
 
-При настроенном `teleop_operator_payment_flat_sol` на ноде `x402_server` уйдёт фиксированная сумма независимо от полей времени в JSON.
+With `teleop_operator_payment_flat_sol` set on `x402_server`, a fixed amount is sent regardless of time fields in JSON.
 
-## Входящий WebSocket (rosbridge)
+## Inbound WebSocket (rosbridge)
 
-JWT оператора до rosbridge не доходит; RAID пробрасывает заголовки/query с UUID оператора. Стандартный rosbridge их не проверяет — см. [ROSBRIDGE_AND_RAID.md](../../br-kyr/DOC/ROSBRIDGE_AND_RAID.md) в KYR.
+Operator JWT does not reach rosbridge; RAID forwards headers/query with operator UUID. Stock rosbridge does not validate them — see [ROSBRIDGE_AND_RAID.md](../../br-kyr/DOC/ROSBRIDGE_AND_RAID.md) in KYR.

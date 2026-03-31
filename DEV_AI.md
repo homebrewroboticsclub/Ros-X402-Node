@@ -1,44 +1,44 @@
-# DEV_AI — контекст для агентов (rospy_x402)
+# DEV_AI — agent context (rospy_x402)
 
-## Единая точка входа экосистемы (KYR + x402 + teleop)
+## Ecosystem entry point (KYR + x402 + teleop)
 
-Запуск, RAID, частые команды и индекс доков связки: **[../br_bringup/DEV_AI.md](../br_bringup/DEV_AI.md)**, **[../br_bringup/README.md](../br_bringup/README.md)**.
+Launch, RAID, common commands, doc index: **[../br_bringup/DEV_AI.md](../br_bringup/DEV_AI.md)**, **[../br_bringup/README.md](../br_bringup/README.md)**.
 
-## Назначение
+## Purpose
 
-ROS 1 (Noetic) пакет: REST API над возможностями робота с оплатой по протоколу **x402** (Solana), ROS-сервис исходящих платежей, библиотека `rospy_x402.x402`.
+ROS 1 (Noetic) package: REST API over robot capabilities with **x402** (Solana) payment, ROS outgoing payment service, library `rospy_x402.x402`.
 
-## Структура
+## Layout
 
-- `.gitignore` — дополнительно к `.env` и bytecode: venv, `.pytest_cache/`, `.mypy_cache/`, IDE, `*.log`. Публикация: [../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md](../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md).
-- Нода: `scripts/x402_ex_server.py` → модули в `src/rospy_x402/` (`server.py`, `config.py`, `x402/*`, демо-callables).
-- Конфиг эндпоинтов: `config/endpoints.example.json`.
-- Документация: [DOC/README.md](DOC/README.md). Спринт vs зона rospy_x402: [DOC/SPRINT_STATUS_ROS_WORKSPACE.md](DOC/SPRINT_STATUS_ROS_WORKSPACE.md).
+- `.gitignore` — besides `.env` and bytecode: venv, `.pytest_cache/`, `.mypy_cache/`, IDE, `*.log`. Publishing: [../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md](../br_bringup/DOC/PUBLIC_RELEASE_CHECKLIST.md).
+- Node: `scripts/x402_ex_server.py` → modules under `src/rospy_x402/` (`server.py`, `config.py`, `x402/*`, demo callables).
+- Endpoint config: `config/endpoints.example.json`.
+- Docs: [DOC/README.md](DOC/README.md). Sprint vs rospy_x402: [DOC/SPRINT_STATUS_ROS_WORKSPACE.md](DOC/SPRINT_STATUS_ROS_WORKSPACE.md).
 
-## Обязанности при правках
+## Responsibilities when editing
 
-1. **Документация** — синхронно обновлять `DOC/*` (архитектура, протокол, диаграммы). Новый крупный блок (например, новый тип `ros_action`) — отдельный файл в `DOC/` + ссылки в `DOC/README.md`, [README.md](README.md), этом файле.
-2. **Тесты** — новый функционал сопровождать тестами; прогон всего пакета:
+1. **Documentation** — keep `DOC/*` in sync (architecture, protocol, diagrams). Large new area (e.g. new `ros_action` type) → new `DOC/` file + links in `DOC/README.md`, [README.md](README.md), this file.
+2. **Tests** — new behaviour needs tests; run full package:
    ```bash
    cd /home/ubuntu/ros_ws && source devel/setup.bash
    catkin_make run_tests --pkg rospy_x402
    ```
-   При отсутствии зарегистрированных тестов в CMake — добавить `rostest`/`pytest` и включить в `catkin_add_nosetests` или аналог.
-3. **Коммит** — осмысленные сообщения (что изменилось, влияние на API/конфиг).
+   If CMake has no tests — add `rostest`/`pytest` and register in `catkin_add_nosetests` or equivalent.
+3. **Commit** — clear messages (what changed, API/config impact).
 
-## Телеоп: help → грант → SOL оператору
+## Teleop: help → grant → SOL to operator
 
-- Эскалация: `POST …/teleop/help` (`EscalationManager`). Inline `teleopGrantPayload`+sig **или** поллинг `GET …/teleop/session-grant` (`raid_session_grant_client`, после Accept в RAID). Параметры: `~raid_session_grant_poll`, `~raid_session_grant_timeout_sec`, `~raid_session_grant_interval_sec`. Спеки: [DOC/ROBOT_TELEOP_KYR_RAID_GRANT.md](DOC/ROBOT_TELEOP_KYR_RAID_GRANT.md), [DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
-- После `close_session` телеоп вызывает `/x402/complete_teleop_payment` с `receipt_payload` — перевод SOL на `operator_pubkey` тем же `X402Client`, что и `x402_buy_service`. Сумма: receipt.`operator_payment_sol` (из гранта RAID) → иначе `~teleop_operator_payment_flat_sol` (в `ecosystem.launch` умолч. **0.0005**) → иначе длительность × `~teleop_operator_payment_sol_per_sec`.
-- Чистый перевод без HTTP к целевому API: `rosservice call /x402_buy_service` с непустым `payer_account` и **пустым** `endpoint`.
+- Escalation: `POST …/teleop/help` (`EscalationManager`). Inline `teleopGrantPayload`+sig **or** poll `GET …/teleop/session-grant` (`raid_session_grant_client`, after Accept on RAID). Params: `~raid_session_grant_poll`, `~raid_session_grant_timeout_sec`, `~raid_session_grant_interval_sec`. Specs: [DOC/ROBOT_TELEOP_KYR_RAID_GRANT.md](DOC/ROBOT_TELEOP_KYR_RAID_GRANT.md), [DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
+- After teleop `close_session`, `/x402/complete_teleop_payment` with `receipt_payload` — SOL to `operator_pubkey` using the same `X402Client` as `x402_buy_service`. Amount: receipt.`operator_payment_sol` (from RAID grant) → else `~teleop_operator_payment_flat_sol` (default in `ecosystem.launch` **0.0005**) → else duration × `~teleop_operator_payment_sol_per_sec`.
+- Pure transfer without HTTP to target API: `rosservice call /x402_buy_service` with non-empty `payer_account` and **empty** `endpoint`.
 
 ## Peaq claim (RAID + KYR + dataset)
 
-- Робот шлёт `metadata.kyr_peaq_context` в `teleop/help`, забирает `peaq_claim` (inline или `GET …/peaq/claim`), вызывает `/teleop_fetch/set_peaq_dataset_claim`. Детали: [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md). Спеки RAID/DATA_NODE: `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`, `DATA_NODE_PEAQ_CLAIM_SPEC.md`.
-- Нет клейма (в т.ч. `claim_not_ready` на стороне Peaq/RAID) — **fail-open**: help и grant не ломаются; см. раздел «Operational status» в `PEAQ_RAID_CLAIM.md`.
-- Зависимость сборки/рантайма: пакет **KYR** (`GetPeaqIssuanceMetadata`).
+- Robot sends `metadata.kyr_peaq_context` in `teleop/help`, fetches `peaq_claim` (inline or `GET …/peaq/claim`), calls `/teleop_fetch/set_peaq_dataset_claim`. Details: [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md). RAID/DATA_NODE specs: `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`, `DATA_NODE_PEAQ_CLAIM_SPEC.md`.
+- No claim (including `claim_not_ready` on Peaq/RAID) — **fail-open**: help and grant still work; see “Operational status” in `PEAQ_RAID_CLAIM.md`.
+- Build/runtime dependency: package **KYR** (`GetPeaqIssuanceMetadata`).
 
-## Полезные ссылки
+## Useful links
 
 - [DOC/ARCHITECTURE.md](DOC/ARCHITECTURE.md)
 - [DOC/X402_PROTOCOL.md](DOC/X402_PROTOCOL.md)

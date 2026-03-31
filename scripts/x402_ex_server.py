@@ -334,7 +334,7 @@ def main() -> None:
             "export ROBOT_FLEET_ENROLLMENT_SECRET / RAID_* before roslaunch."
         )
 
-    # rosparam > env RAID_APP_URL > mDNS default (override via launch or .env if mDNS недоступен)
+    # rosparam > env RAID_APP_URL > mDNS default (override via launch or .env if mDNS is unavailable)
     raid_app_url = (rospy.get_param("~raid_app_url", "") or "").strip()
     if not raid_app_url:
         raid_app_url = (os.environ.get("RAID_APP_URL") or "").strip()

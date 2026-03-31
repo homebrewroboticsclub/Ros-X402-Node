@@ -1,21 +1,21 @@
-# RAID App — расширение `POST …/teleop/help` (поле `situation_report`)
+# RAID App — `POST …/teleop/help` extension (`situation_report` field)
 
-**Полный цикл телеопа + SOL оператору (x402 на роботе):** [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
+**Full teleop cycle + SOL to operator (x402 on robot):** [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
 
-**Аудитория:** разработчики RAID App (`x402_raid_app` или эквивалент).  
-**Источник на роботе:** пакет `rospy_x402`, `EscalationManager._request_grant_from_raid` → HTTP `POST` на URL ниже.
+**Audience:** RAID App developers (`x402_raid_app` or equivalent).  
+**Robot source:** package `rospy_x402`, `EscalationManager._request_grant_from_raid` → HTTP `POST` to the URL below.
 
-## Эндпоинт и заголовки (без изменений)
+## Endpoint and headers (unchanged)
 
-- **Метод:** `POST`
-- **Путь:** `/api/robots/{robotId}/teleop/help` (`robotId` — UUID из enroll).
-- **Заголовки:**
+- **Method:** `POST`
+- **Path:** `/api/robots/{robotId}/teleop/help` (`robotId` — UUID from enroll).
+- **Headers:**
   - `Content-Type: application/json`
-  - `X-Robot-Teleop-Secret` — секрет робота из enroll
+  - `X-Robot-Teleop-Secret` — robot secret from enroll
 
-## Тело запроса JSON
+## JSON request body
 
-Робот отправляет объект вида:
+The robot sends an object like:
 
 ```json
 {
@@ -28,25 +28,25 @@
 }
 ```
 
-| Поле | Обязательность | Описание |
-|------|----------------|----------|
-| `message` | да | Краткая метка (как раньше). |
-| `metadata` | да | Объект с контекстом заявки. |
-| `metadata.task_id` | да | Идентификатор задачи / сессии на стороне робота. |
-| `metadata.error_context` | да | Строка (часто JSON) с машиночитаемыми деталями ошибки; может быть пустой. |
-| `metadata.situation_report` | **новое**, рекомендуется | Свободный текст UTF-8: **текущее состояние робота**, **что делал недавно**, **почему нужен телеоператор**. Может быть длинным (тысячи символов). Старые клиенты могут не слать ключ — трактовать как `""`. |
-| `metadata.kyr_peaq_context` | **новое**, опционально | Объект JSON от KYR для привязки peaq-клейма на RAID (см. `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`). Если нет — не падать. |
+| Field | Required | Description |
+|------|----------|-------------|
+| `message` | yes | Short label (as before). |
+| `metadata` | yes | Object with request context. |
+| `metadata.task_id` | yes | Task / session id on the robot side. |
+| `metadata.error_context` | yes | String (often JSON) with machine-readable error details; may be empty. |
+| `metadata.situation_report` | **new**, recommended | Free UTF-8 text: **current robot state**, **recent actions**, **why a teleoperator is needed**. May be long (thousands of chars). Old clients may omit the key — treat as `""`. |
+| `metadata.kyr_peaq_context` | **new**, optional | JSON object from KYR for peaq claim binding on RAID (see `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`). If absent — do not fail. |
 
-## Что сделать на стороне RAID
+## RAID-side work
 
-1. **Принять** `metadata.situation_report` в теле `POST …/teleop/help` (парсинг JSON).
-2. **Сохранить** в модели заявки о помощи (help request) и отдавать в UI/API оператору вместе с `task_id` / `error_context`.
-3. **Обратная совместимость:** если поля нет — не падать; считать пустой строкой.
-4. **Ограничения (рекомендация):** лимит длины на уровне API/БД (например 32–64 KiB), при превышении — `413` или обрезка с пометкой в логе — по политике продукта.
-5. **Кодировка:** UTF-8; не интерпретировать как HTML без экранирования в UI.
+1. **Accept** `metadata.situation_report` in `POST …/teleop/help` (JSON parse).
+2. **Persist** in the help request model and expose to operator UI/API with `task_id` / `error_context`.
+3. **Backward compatibility:** if the field is missing — do not fail; treat as empty string.
+4. **Limits (recommendation):** cap length at API/DB (e.g. 32–64 KiB); on overflow — `413` or truncate with log note — per product policy.
+5. **Encoding:** UTF-8; do not render as raw HTML without escaping in UI.
 
-## Связанный ROS API на роботе
+## Related ROS API on the robot
 
-Сервис `rospy_x402/RequestHelp` (`/x402/request_help`): поле `situation_report` дублируется в `metadata.situation_report` HTTP-запроса.
+Service `rospy_x402/RequestHelp` (`/x402/request_help`): field `situation_report` is copied to `metadata.situation_report` in the HTTP request.
 
-Документация робота: [RAID_INTEGRATION.md](RAID_INTEGRATION.md).
+Robot documentation: [RAID_INTEGRATION.md](RAID_INTEGRATION.md).
