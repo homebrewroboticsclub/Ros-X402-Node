@@ -36,7 +36,7 @@ ROS 1 (Noetic) package: REST API over robot capabilities with **x402** (Solana) 
 
 ## Peaq claim (RAID + KYR + dataset)
 
-- Robot sends `metadata.kyr_peaq_context` in `teleop/help`, fetches `peaq_claim` (inline or `GET …/peaq/claim`), calls `/teleop_fetch/set_peaq_dataset_claim`. Details: [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md). RAID/DATA_NODE specs: `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`, `DATA_NODE_PEAQ_CLAIM_SPEC.md`.
+- Robot sends `metadata.kyr_peaq_context` in `teleop/help`, fetches `peaq_claim` (inline or `GET …/peaq/claim`), calls `/teleop_fetch/set_peaq_dataset_claim`. Details: [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md). RAID/DATA_NODE specs: [../br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md](../br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md), [../br-vr-dev-sinc/DOC/DATA_NODE_PEAQ_CLAIM_SPEC.md](../br-vr-dev-sinc/DOC/DATA_NODE_PEAQ_CLAIM_SPEC.md).
 - No claim (including `claim_not_ready` on Peaq/RAID) — **fail-open**: help and grant still work; see “Operational status” in `PEAQ_RAID_CLAIM.md`.
 - Build/runtime dependency: package **KYR** (`GetPeaqIssuanceMetadata`).
 
