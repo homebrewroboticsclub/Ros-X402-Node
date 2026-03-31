@@ -141,9 +141,10 @@ class EscalationManager:
                 "situation_report": event.get("situation_report", ""),
             },
         }
-        kyr_ctx = self._kyr_peaq_context_dict(event)
-        if kyr_ctx is not None:
-            payload["metadata"]["kyr_peaq_context"] = kyr_ctx
+        if rospy.get_param("~raid_send_kyr_peaq_context", True):
+            kyr_ctx = self._kyr_peaq_context_dict(event)
+            if kyr_ctx is not None:
+                payload["metadata"]["kyr_peaq_context"] = kyr_ctx
 
         logger.info("POST %s ...", url)
         response = requests.post(url, json=payload, headers=headers, timeout=10.0)
@@ -229,7 +230,11 @@ class EscalationManager:
             return
         try:
             claim_json = json.dumps(claim, ensure_ascii=False)
-            rospy.wait_for_service("/teleop_fetch/set_peaq_dataset_claim", timeout=2.0)
+            wait_sec = float(rospy.get_param("~raid_peaq_dataset_claim_wait_sec", 5.0))
+            rospy.wait_for_service(
+                "/teleop_fetch/set_peaq_dataset_claim",
+                timeout=max(0.5, wait_sec),
+            )
             res = self._set_peaq_claim_proxy(claim_json=claim_json, dataset_id="")
             if res.success:
                 logger.info("peaq claim merged into dataset metadata")

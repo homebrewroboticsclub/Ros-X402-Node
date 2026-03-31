@@ -13,6 +13,8 @@ Peaq DID/claim issuance runs on **RAID** (Node.js + peaq SDK). The robot only se
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `raid_peaq_claim_enabled` | `true` | If `false`, skip GET claim and dataset merge. |
+| `raid_send_kyr_peaq_context` | `true` | If `false`, do not add `metadata.kyr_peaq_context` to `teleop/help` (use if RAID rejects the field). |
+| `raid_peaq_dataset_claim_wait_sec` | `5.0` | `wait_for_service` for `/teleop_fetch/set_peaq_dataset_claim` (recorder may start after x402). |
 | `raid_peaq_claim_timeout_sec` | `10.0` | HTTP timeout per GET. |
 | `raid_peaq_claim_poll_attempts` | `3` | Retries on HTTP 404. |
 | `raid_peaq_claim_poll_delay_sec` | `1.0` | Delay between polls. |
