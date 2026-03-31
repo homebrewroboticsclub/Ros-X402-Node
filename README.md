@@ -534,7 +534,6 @@ After `configure`, use the printed `rosservice call /x402_buy_service ...` with 
 ## Documentation
 
 - **[DOC/README.md](DOC/README.md)** — documentation index by functional area
-- **[DEV_AI.md](DEV_AI.md)** — context and workflow for AI coding agents
 - **[DOC/ARCHITECTURE.md](DOC/ARCHITECTURE.md)** — components, data flow, extension points
 - **[DOC/X402_PROTOCOL.md](DOC/X402_PROTOCOL.md)** — x402 V2 (402 response, discovery, verification, config)
 - **[DOC/ARCHITECTURE_DIAGRAMS.md](DOC/ARCHITECTURE_DIAGRAMS.md)** — Mermaid diagrams

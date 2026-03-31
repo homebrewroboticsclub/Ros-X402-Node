@@ -1,6 +1,6 @@
 # rospy_x402 — documentation index
 
-Package documentation lives in **`DOC/`**. Root [README.md](../README.md) and [DEV_AI.md](../DEV_AI.md) point here.
+Package documentation lives in **`DOC/`**. Root [README.md](../README.md) links here.
 
 ## REST server and code architecture
 
@@ -32,4 +32,4 @@ Package documentation lives in **`DOC/`**. Root [README.md](../README.md) and [D
 
 ---
 
-When code changes, update the matching sections; new functional area → new `DOC/` file + link here, in README and DEV_AI.
+When code changes, update the matching sections; new functional area → new `DOC/` file + link here and in README.
