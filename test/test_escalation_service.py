@@ -60,6 +60,29 @@ class TestEscalationTeleopHelpPayload(unittest.TestCase):
         self.assertIn("situation_report", body["metadata"])
         self.assertEqual(body["metadata"]["situation_report"], "")
 
+    @patch("rospy_x402.escalation_service.rospy.get_param", side_effect=_claim_off_get_param)
+    @patch("rospy_x402.escalation_service.rospy.ServiceProxy", MagicMock())
+    @patch("rospy_x402.escalation_service.rospy.Service", MagicMock())
+    @patch("rospy_x402.escalation_service.requests.post")
+    def test_raid_signed_grant_used_verbatim(self, mock_post, _mock_get_param):
+        grant_str = '{"session_id":"sid","robot_id":"rid","task_id":"t1","operator_pubkey":"Op1","valid_until_sec":9999999999,"scope_json":"{}"}'
+        mock_resp = MagicMock()
+        mock_resp.status_code = 201
+        mock_resp.json.return_value = {
+            "id": "help-1",
+            "teleopGrantPayload": grant_str,
+            "teleopGrantSignature": "signed_by_raid",
+        }
+        mock_post.return_value = mock_resp
+
+        with patch.object(EscalationManager, "_kyr_peaq_context_dict", return_value=None):
+            mgr = EscalationManager("http://raid:3000", "robot-uuid", "secret")
+            event = {"task_id": "t1", "error_context": "", "situation_report": ""}
+            payload, sig = mgr._request_grant_from_raid(event)
+
+        self.assertEqual(payload, grant_str)
+        self.assertEqual(sig, "signed_by_raid")
+
 
 if __name__ == "__main__":
     unittest.main()

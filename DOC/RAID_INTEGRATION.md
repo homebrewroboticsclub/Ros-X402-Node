@@ -74,6 +74,8 @@
 
 В теле запроса в `metadata` передаются `task_id`, `error_context` и текстовое поле **`situation_report`** (свободное описание состояния и причины эскалации). Контракт для RAID: [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
 
+Если в JSON ответа есть **`teleopGrantPayload`** + **`teleopGrantSignature`** (или синонимы из спеки), робот передаёт их в KYR как `grant_payload` / `signature` без подмены mock-грантом. Иначе — фолбэк mock до обновления RAID. Полный цикл и поля для команды RAID: [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
+
 ROS: сервис `/x402/request_help` (`rospy_x402/RequestHelp`) — третье поле запроса `situation_report`.
 
 ## Входящий WebSocket (rosbridge)

@@ -59,6 +59,7 @@ add_service_files(
   FILES
   x402_buy_service.srv
   RequestHelp.srv
+  CompleteTeleopPayment.srv
 )
 
 ## Generate actions in the 'action' folder

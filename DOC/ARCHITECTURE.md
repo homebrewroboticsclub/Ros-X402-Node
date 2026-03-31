@@ -21,7 +21,9 @@ rospy_x402/
 │   ├── server.py                 # X402RestServer (HTTP + x402 402 handling)
 │   ├── health.py                 # get_health_status (used by /health endpoint)
 │   ├── raid_integration.py       # RAID enroll, state file, operator allowlist JSON
-│   ├── escalation_service.py     # teleop/help to RAID, KYR peaq context, GET peaq/claim, RequestHelp, mock SessionGrant
+│   ├── escalation_service.py     # teleop/help to RAID, signed grant parse (raid_teleop_grant), RequestHelp, peaq claim
+│   ├── raid_teleop_grant.py      # extract teleopGrantPayload + signature from RAID JSON
+│   ├── teleop_operator_payment.py # SOL to operator from KYR receipt (shared with complete_teleop_payment)
 │   ├── raid_peaq_client.py       # HTTP GET peaq claim from RAID (see DOC/PEAQ_RAID_CLAIM.md)
 │   ├── demo_actions.py           # Demo callables (move_demo, buy_cola_demo, shoot_demo)
 │   ├── bazaar_cli.py             # Console CLI for x402 Bazaar (search/configure)
@@ -69,7 +71,8 @@ rospy_x402/
 
 - Resolves RAID credentials: rosparam/env → state file `~/.ros/raid_robot_state.json` → optional auto-enroll (`raid_integration.enroll_robot`). Configures operator-sync route on `X402RestServer` when `RAID_TO_ROBOT_SECRET` is set.
 - Loads config and Solana key (prompt), creates `X402RestServer` and starts it in a daemon thread.
-- Advertises `x402_buy_service`: request fields include `endpoint`, `method`, `payload`, `headers_json`, `amount`, `asset_symbol`, `payer_account`. If `payer_account` is set, the node **sends** payment to that address then calls the endpoint (e.g. with `X-X402-Payment-Signature`). If empty, the node **creates an incoming payment session** and waits for the caller to pay the robot, then proceeds (used when the client pays the robot before calling).
+- Advertises `x402_buy_service`: request fields include `endpoint`, `method`, `payload`, `headers_json`, `amount`, `asset_symbol`, `payer_account`. If `payer_account` is set, the node **sends** payment to that address, then calls `endpoint` **only if** `endpoint` is non-empty (otherwise transfer-only). If `payer_account` is empty, the node **creates an incoming payment session** and waits for the caller to pay the robot, then proceeds.
+- Advertises `/x402/complete_teleop_payment`: after KYR `close_session`, `teleop_fetch` passes `receipt_payload`; the node pays `operator_pubkey` in SOL using `teleop_operator_payment.py` and `X402Client.send_payment` (same wallet as outgoing `x402_buy_service`). Rate: rosparam `~teleop_operator_payment_sol_per_sec`.
 
 ### 5. Bazaar CLI (`bazaar_cli.py`)
 
@@ -81,7 +84,8 @@ rospy_x402/
 ## Data flow summary
 
 - **Incoming paid REST**: Client → GET/POST endpoint → 402 with V2 body → client pays to `accepts[0].payTo`, retries with `X-X402-Reference: accepts[0].extra.reference` → server verifies on-chain → executes action → 200 + JSON.
-- **Outgoing (robot pays)**: Caller invokes `x402_buy_service` with `payer_account` set → node sends Solana transfer to that address → node performs HTTP request to `endpoint` with signature header → returns response to caller.
+- **Outgoing (robot pays)**: Caller invokes `x402_buy_service` with `payer_account` set → node sends Solana transfer → if `endpoint` is set, HTTP request with signature header; if `endpoint` is empty, transfer-only success.
+- **Teleop operator pay**: `teleop_fetch` → `/x402/complete_teleop_payment` after session close; see [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
 - **Discovery**: GET `/.well-known/x402` → JSON with `x402Version: 2` and `resources[]` (url, description, mimeType, accepts, extensions).
 
 ## Extension points

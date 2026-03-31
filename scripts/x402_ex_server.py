@@ -64,10 +64,14 @@ from rospy_x402.x402 import (
     X402Error,
 )
 from rospy_x402.srv import (
+    CompleteTeleopPayment,
+    CompleteTeleopPaymentRequest,
+    CompleteTeleopPaymentResponse,
     x402_buy_service,
     x402_buy_serviceRequest,
     x402_buy_serviceResponse,
 )
+from rospy_x402.teleop_operator_payment import pay_operator_from_receipt_payload
 
 
 from rospy_x402.escalation_service import EscalationManager
@@ -169,6 +173,14 @@ class X402BuyServiceHandler:
                     error_message=str(exc),
                     payment_signature="",
                 )
+            endpoint = (request.endpoint or "").strip()
+            if not endpoint:
+                return x402_buy_serviceResponse(
+                    success=True,
+                    response_body="",
+                    error_message="",
+                    payment_signature=signature,
+                )
         else:
             receiver_account = self._receiver_account or (self._x402_client.public_key or "")
             if not receiver_account:
@@ -216,7 +228,7 @@ class X402BuyServiceHandler:
 
         try:
             response_body = _http_request(
-                url=request.endpoint,
+                url=(request.endpoint or "").strip(),
                 method=request.method or "GET",
                 payload=request.payload,
                 headers=self._inject_signature_header(headers, signature),
@@ -453,6 +465,21 @@ def main() -> None:
     )
 
     rospy.Service("x402_buy_service", x402_buy_service, buy_handler)
+
+    def _complete_teleop_payment_cb(
+        req: CompleteTeleopPaymentRequest,
+    ) -> CompleteTeleopPaymentResponse:
+        rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
+        ok, msg, sig = pay_operator_from_receipt_payload(
+            rest_server.x402_client, req.receipt_payload, rate
+        )
+        return CompleteTeleopPaymentResponse(ok, msg, sig)
+
+    rospy.Service(
+        "/x402/complete_teleop_payment",
+        CompleteTeleopPayment,
+        _complete_teleop_payment_cb,
+    )
 
     try:
         escalation_manager = EscalationManager(

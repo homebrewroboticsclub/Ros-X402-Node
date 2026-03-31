@@ -1,5 +1,7 @@
 # RAID App — расширение `POST …/teleop/help` (поле `situation_report`)
 
+**Полный цикл телеопа + SOL оператору (x402 на роботе):** [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
+
 **Аудитория:** разработчики RAID App (`x402_raid_app` или эквивалент).  
 **Источник на роботе:** пакет `rospy_x402`, `EscalationManager._request_grant_from_raid` → HTTP `POST` на URL ниже.
 

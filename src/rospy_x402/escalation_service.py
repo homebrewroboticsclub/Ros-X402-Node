@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional, Tuple
 from rospy_x402.srv import RequestHelp, RequestHelpResponse
 
 from rospy_x402.raid_peaq_client import extract_peaq_claim_object, fetch_peaq_claim
+from rospy_x402.raid_teleop_grant import extract_signed_grant_from_raid_help_response
+from rospy_x402.teleop_operator_payment import pay_operator_from_receipt_payload
 
 # Try to import teleop_fetch services if available, fallback otherwise
 try:
@@ -38,7 +40,6 @@ class EscalationManager:
         self.robot_id = robot_id
         self.teleop_secret = teleop_secret
         self.x402_client = x402_client
-        self.base_rate_per_sec = 0.000001 # 1 lamport approx/micro sol per sec for testing
         
         # ROS Service for manual/external triggering
         try:
@@ -176,19 +177,21 @@ class EscalationManager:
         except Exception as e:
             logger.warning("peaq claim fetch/merge skipped (fail-open): %s", e)
 
-        # Temporary solution: Since RAID currently returns only the helpRequest and not a signed
-        # cryptographic grant, we generate a mock valid SessionGrant here to satisfy KYR.
-        # In the future, this data (and its signature) will come directly from RAID.
-        
+        signed = extract_signed_grant_from_raid_help_response(data)
+        if signed:
+            logger.info("Using signed SessionGrant from RAID teleop/help response.")
+            return signed[0], signed[1]
+
+        # Fallback until RAID returns teleopGrantPayload + teleopGrantSignature (see DOC).
         grant = {
             "session_id": self._help_request_id(data) or str(uuid.uuid4()),
             "robot_id": self.robot_id,
             "task_id": event.get("task_id", "unknown"),
-            "operator_pubkey": "pending_from_raid", # To be replaced when RAID supports it
+            "operator_pubkey": "pending_from_raid",
             "valid_until_sec": int(time.time()) + 3600,
-            "scope_json": json.dumps({"allowed_actions": ["*"]})
+            "scope_json": json.dumps({"allowed_actions": ["*"]}),
         }
-        
+
         payload_str = json.dumps(grant)
         dummy_sig = "dummy_signature_base58_encoded"
 
@@ -261,43 +264,35 @@ class EscalationManager:
 
     def close_and_pay(self, session_id: str, reason: str = "completed"):
         """
-        Signals KYR to close the session, fetches the SignedReceipt, and triggers post-pay via x402.
+        Close KYR session and pay the operator (same SOL transfer path as /x402/complete_teleop_payment).
+        Prefer calling KYR close from teleop_fetch and then complete_teleop_payment from the same receipt.
         """
         if not self.kyr_close_proxy:
             logger.error("Cannot close and pay: KYR CloseSession proxy unavailable.")
             return
 
         try:
-            rospy.wait_for_service('/kyr/close_session', timeout=5.0)
+            rospy.wait_for_service("/kyr/close_session", timeout=5.0)
             res = self.kyr_close_proxy(session_id=session_id, reason=reason)
-            
+
             if not res.success:
-                logger.error(f"KYR failed to close session: {res.message}")
+                logger.error("KYR failed to close session: %s", res.message)
                 return
 
-            receipt = json.loads(res.receipt_payload)
-            operator_pubkey = receipt.get("operator_pubkey")
-            started_at = receipt.get("started_at_sec", 0)
-            ended_at = receipt.get("ended_at_sec", 0)
-            
-            # Simple duration-based pricing for demo
-            duration_sec = max(ended_at - started_at, 0)
-            amount_sol = duration_sec * self.base_rate_per_sec
+            if not self.x402_client:
+                logger.warning("x402_client unavailable; post-pay skipped.")
+                return
 
-            logger.info(f"Session {session_id} lasted {duration_sec}s. Owed: {amount_sol} SOL to {operator_pubkey}")
-
-            if self.x402_client and operator_pubkey and operator_pubkey != "unknown":
-                sig = self.x402_client.send_payment(destination=operator_pubkey, amount_sol=amount_sol)
-                logger.info(f"Post-pay successful. Signature: {sig}")
+            rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
+            ok, msg, _sig = pay_operator_from_receipt_payload(
+                self.x402_client, res.receipt_payload, rate
+            )
+            if ok:
+                logger.info("close_and_pay: %s", msg)
             else:
-                logger.warning("x402_client unavailable or invalid operator pubkey. Payment skipped.")
+                logger.error("close_and_pay: %s", msg)
 
-            # In a full integration, you would POST the receipt + payment signature back to RAID
-            # requests.post(f"{self.raid_app_url}/api/v1/receipt", json={"receipt": receipt, "signature": res.receipt_signature, "payment_sig": sig})
-            
         except rospy.ServiceException as e:
-            logger.error(f"KYR close_session service call failed: {e}")
-        except json.JSONDecodeError:
-            logger.error("Failed to parse receipt JSON from KYR.")
-        except Exception as e:
-            logger.error(f"Post-pay failed: {e}")
+            logger.error("KYR close_session service call failed: %s", e)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("Post-pay failed: %s", e)

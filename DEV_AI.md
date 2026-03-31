@@ -25,6 +25,12 @@ ROS 1 (Noetic) пакет: REST API над возможностями робот
    При отсутствии зарегистрированных тестов в CMake — добавить `rostest`/`pytest` и включить в `catkin_add_nosetests` или аналог.
 3. **Коммит** — осмысленные сообщения (что изменилось, влияние на API/конфиг).
 
+## Телеоп: help → грант → SOL оператору
+
+- Эскалация: `POST …/teleop/help` (см. `EscalationManager`). Если RAID отдаёт `teleopGrantPayload` + `teleopGrantSignature`, робот передаёт их в KYR; иначе mock-грант. Спека для RAID: [DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](DOC/RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md).
+- После `close_session` телеоп вызывает `/x402/complete_teleop_payment` с `receipt_payload` — перевод SOL на `operator_pubkey` тем же `X402Client`, что и `x402_buy_service`. Роsparam: `~teleop_operator_payment_sol_per_sec` (умолч. `1e-6`).
+- Чистый перевод без HTTP к целевому API: `rosservice call /x402_buy_service` с непустым `payer_account` и **пустым** `endpoint`.
+
 ## Peaq claim (RAID + KYR + dataset)
 
 - Робот шлёт `metadata.kyr_peaq_context` в `teleop/help`, забирает `peaq_claim` (inline или `GET …/peaq/claim`), вызывает `/teleop_fetch/set_peaq_dataset_claim`. Детали: [DOC/PEAQ_RAID_CLAIM.md](DOC/PEAQ_RAID_CLAIM.md). Спеки RAID/DATA_NODE: `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`, `DATA_NODE_PEAQ_CLAIM_SPEC.md`.
