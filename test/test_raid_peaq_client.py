@@ -2,7 +2,27 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from rospy_x402.raid_peaq_client import fetch_peaq_claim
+from rospy_x402.raid_peaq_client import extract_peaq_claim_object, fetch_peaq_claim
+
+
+class TestExtractPeaqClaim(unittest.TestCase):
+    def test_snake_case(self):
+        self.assertEqual(
+            extract_peaq_claim_object({"peaq_claim": {"x": 1}}),
+            {"x": 1},
+        )
+
+    def test_camel_case(self):
+        self.assertEqual(
+            extract_peaq_claim_object({"peaqClaim": {"y": 2}}),
+            {"y": 2},
+        )
+
+    def test_snake_wins_when_both(self):
+        self.assertEqual(
+            extract_peaq_claim_object({"peaq_claim": {"a": 1}, "peaqClaim": {"b": 2}}),
+            {"a": 1},
+        )
 
 
 class TestRaidPeaqClient(unittest.TestCase):

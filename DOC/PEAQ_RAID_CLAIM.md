@@ -21,6 +21,14 @@ Peaq DID/claim issuance runs on **RAID** (Node.js + peaq SDK). The robot only se
 
 Failures are **fail-open**: teleop/help and grant forwarding still succeed if peaq steps fail.
 
+## RAID JSON field names
+
+Inline help body and GET `peaq/claim` must include a claim object as **`peaq_claim`** or **`peaqClaim`** (dict). If RAID uses another key, the robot will not merge.
+
+## Dataset timing
+
+`set_peaq_dataset_claim` runs **immediately after** a successful `teleop/help` response. It writes into the **currently active** dataset (from `session_state.json`). If no recording is active at that moment, the service returns an error and **`peaqClaim` is not stored** — typical when testing only `rosservice call /x402/request_help` without a parallel `/record_sessions` capture. For end-to-end tests: start dataset recording, then call `request_help` while recording (or extend the pipeline to stash the claim and merge on upload).
+
 ## Code
 
 - `src/rospy_x402/raid_peaq_client.py` — HTTP GET client.

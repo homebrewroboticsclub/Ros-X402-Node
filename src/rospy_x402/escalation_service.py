@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, Tuple
 
 from rospy_x402.srv import RequestHelp, RequestHelpResponse
 
-from rospy_x402.raid_peaq_client import fetch_peaq_claim
+from rospy_x402.raid_peaq_client import extract_peaq_claim_object, fetch_peaq_claim
 
 # Try to import teleop_fetch services if available, fallback otherwise
 try:
@@ -167,6 +167,12 @@ class EscalationManager:
             claim = self._maybe_obtain_peaq_claim(data)
             if claim:
                 self._push_peaq_claim_to_dataset(claim)
+            else:
+                logger.info(
+                    "No peaq claim to merge (RAID omitted inline/GET or wrong JSON keys; "
+                    "expect peaq_claim or peaqClaim). help top-level keys: %s",
+                    sorted(data.keys()) if isinstance(data, dict) else "n/a",
+                )
         except Exception as e:
             logger.warning("peaq claim fetch/merge skipped (fail-open): %s", e)
 
@@ -175,7 +181,7 @@ class EscalationManager:
         # In the future, this data (and its signature) will come directly from RAID.
         
         grant = {
-            "session_id": data.get("id", str(uuid.uuid4())),
+            "session_id": self._help_request_id(data) or str(uuid.uuid4()),
             "robot_id": self.robot_id,
             "task_id": event.get("task_id", "unknown"),
             "operator_pubkey": "pending_from_raid", # To be replaced when RAID supports it
@@ -206,20 +212,30 @@ class EscalationManager:
             logger.warning("Could not load kyr_peaq_context: %s", e)
             return None
 
+    def _help_request_id(self, help_response: Dict[str, Any]) -> Optional[str]:
+        hid = help_response.get("id")
+        if hid:
+            return str(hid)
+        nested = help_response.get("helpRequest")
+        if isinstance(nested, dict) and nested.get("id"):
+            return str(nested.get("id"))
+        return None
+
     def _maybe_obtain_peaq_claim(self, help_response: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not rospy.get_param("~raid_peaq_claim_enabled", True):
             return None
-        help_id = help_response.get("id")
+        help_id = self._help_request_id(help_response)
         if not help_id:
+            logger.warning("RAID teleop/help JSON has no id (or helpRequest.id); cannot fetch peaq claim")
             return None
-        inline = help_response.get("peaq_claim")
-        if isinstance(inline, dict):
+        inline = extract_peaq_claim_object(help_response)
+        if inline is not None:
             return inline
         return fetch_peaq_claim(
             self.raid_app_url,
             self.robot_id,
             self.teleop_secret,
-            str(help_id),
+            help_id,
             timeout_sec=float(rospy.get_param("~raid_peaq_claim_timeout_sec", 10.0)),
             poll_attempts=int(rospy.get_param("~raid_peaq_claim_poll_attempts", 3)),
             poll_delay_sec=float(rospy.get_param("~raid_peaq_claim_poll_delay_sec", 1.0)),

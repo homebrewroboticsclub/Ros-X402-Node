@@ -11,6 +11,17 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def extract_peaq_claim_object(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """RAID may use snake_case (spec) or camelCase (typical Node); accept both."""
+    if not isinstance(payload, dict):
+        return None
+    for key in ("peaq_claim", "peaqClaim"):
+        val = payload.get(key)
+        if isinstance(val, dict) and val:
+            return val
+    return None
+
+
 def fetch_peaq_claim(
     raid_app_url: str,
     robot_id: str,
@@ -40,10 +51,13 @@ def fetch_peaq_claim(
             resp = sess.get(url, headers=headers, params=params, timeout=timeout_sec)
             if resp.status_code == 200:
                 data = resp.json()
-                claim = data.get("peaq_claim")
-                if isinstance(claim, dict):
+                claim = extract_peaq_claim_object(data)
+                if claim is not None:
                     return claim
-                logger.warning("RAID peaq/claim 200 but peaq_claim missing or not object")
+                logger.warning(
+                    "RAID peaq/claim 200 but no peaq_claim/peaqClaim object; keys=%s",
+                    list(data.keys()) if isinstance(data, dict) else type(data),
+                )
                 return None
             if resp.status_code == 404:
                 logger.info(
