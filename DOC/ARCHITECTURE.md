@@ -94,5 +94,6 @@ rospy_x402/
 ## Peaq claim (RAID, optional)
 
 - **EscalationManager** calls `/kyr/get_peaq_issuance_metadata` and embeds the result in `POST …/teleop/help` as `metadata.kyr_peaq_context`. After a successful help response, it reads inline `peaq_claim` or polls `GET /api/robots/{robotId}/peaq/claim`, then calls `/teleop_fetch/set_peaq_dataset_claim`. See [PEAQ_RAID_CLAIM.md](PEAQ_RAID_CLAIM.md) and `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`.
+- If RAID/Peaq never supplies a claim object (e.g. long-lived `claim_not_ready`), **help and grant forwarding still succeed** (fail-open); dataset export may omit `peaqClaim` until issuance works upstream.
 
 All user-facing strings, logs, comments, and documentation are in English.

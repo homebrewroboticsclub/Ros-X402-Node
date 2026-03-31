@@ -21,6 +21,12 @@ Peaq DID/claim issuance runs on **RAID** (Node.js + peaq SDK). The robot only se
 
 Failures are **fail-open**: teleop/help and grant forwarding still succeed if peaq steps fail.
 
+## Operational status (Peaq / RAID)
+
+In field tests (2026-03), RAID has returned **`GET …/peaq/claim` with HTTP 200** and a body like `{"error":"claim_not_ready"}` (no `peaq_claim` / `peaqClaim` object) when **Peaq-side prerequisites are not met** (e.g. test wallet funding / faucet or related infra). That is **expected** until Peaq or ops fix funding; it is **not** a robot regression. The robot still completes **teleop/help** and **SessionGrant** forwarding; only dataset `peaqClaim` stays empty until RAID returns a real claim object.
+
+**Bug reports** for Peaq or RAID issuance belong in those projects; this repo documents robot behavior only.
+
 ## RAID JSON field names
 
 Inline help body and GET `peaq/claim` must include a claim object as **`peaq_claim`** or **`peaqClaim`** (dict). If RAID uses another key, the robot will not merge.

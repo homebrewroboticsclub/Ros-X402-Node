@@ -65,6 +65,24 @@ class TestRaidPeaqClient(unittest.TestCase):
         self.assertTrue(out.get("ok"))
         self.assertEqual(session.get.call_count, 2)
 
+    def test_fetch_200_claim_not_ready_returns_none(self):
+        """RAID may return 200 + error without peaq_claim (Peaq funding blocked, etc.)."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"error": "claim_not_ready"}
+        session = MagicMock()
+        session.get.return_value = mock_resp
+
+        out = fetch_peaq_claim(
+            "http://raid/",
+            "robot-uuid",
+            "sec",
+            "help-1",
+            session=session,
+        )
+        self.assertIsNone(out)
+        session.get.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
