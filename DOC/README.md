@@ -19,7 +19,7 @@
 - [RAID_INTEGRATION.md](RAID_INTEGRATION.md) — флот-секрет, enroll, персистентность, sync операторов, параметры ноды `x402_ex_server`.
 - [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md) — контракт `POST …/teleop/help` для разработчиков RAID (в т.ч. поле `situation_report`).
 - [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md) — ответ RAID: подписанный SessionGrant, Solana `operator_pubkey`, пост-оплата на роботе (`/x402/complete_teleop_payment`).
-- [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md) — ответ RAID: порядок **help → Accept → GET session-grant**; на роботе поллинг в `raid_session_grant_client` + `EscalationManager`.
+- [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md) — ответ RAID: порядок **help → Accept → GET session-grant**; на роботе поллинг в `raid_session_grant_client` + `EscalationManager`. События эскалации (старт help, POST RAID, poll гранта, пересылка в `teleop_fetch`, ошибки) дополнительно пишутся в **`~/.kyr/dashboard_events.jsonl`** для KYR веб-дашборда (см. `br-kyr/DOC/BLACKBOX_DASHBOARD.md`).
 - [PEAQ_RAID_CLAIM.md](PEAQ_RAID_CLAIM.md) — peaq-клейм через RAID: KYR context, HTTP GET, merge в датасет; см. спеки в `br-vr-dev-sinc/DOC/`.
 
 ---

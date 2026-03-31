@@ -10,6 +10,7 @@ from rospy_x402.srv import RequestHelp, RequestHelpResponse
 from rospy_x402.raid_peaq_client import extract_peaq_claim_object, fetch_peaq_claim
 from rospy_x402.raid_teleop_grant import extract_signed_grant_from_raid_help_response
 from rospy_x402.raid_session_grant_client import poll_raid_session_grant
+from rospy_x402.dashboard_events_log import append_dashboard_event
 from rospy_x402.teleop_operator_payment import pay_operator_from_receipt_payload
 
 # Try to import teleop_fetch services if available, fallback otherwise
@@ -96,28 +97,64 @@ class EscalationManager:
             "situation_report": req.situation_report or "",
         }
 
+        append_dashboard_event(
+            "rospy_x402",
+            "help_request_start",
+            f"RAID help requested (task_id={req.task_id})",
+            {"task_id": req.task_id or ""},
+        )
+
         # Step 1 & 2: Call RAID_APP (Synchronous for simplicity here, could be async)
         try:
             grant_payload, signature = self._request_grant_from_raid(event)
         except Exception as e:
             msg = f"Failed to get grant from RAID: {e}"
             logger.error(msg)
+            append_dashboard_event(
+                "rospy_x402",
+                "help_request_fail",
+                msg[:300],
+                {"task_id": req.task_id or ""},
+            )
             return RequestHelpResponse(success=False, message=msg)
 
         # Step 3: Forward to teleop_fetch
         if not self.teleop_grant_proxy:
+            append_dashboard_event(
+                "rospy_x402",
+                "help_forward_fail",
+                "Teleop proxy not initialized",
+                {"task_id": req.task_id or ""},
+            )
             return RequestHelpResponse(success=False, message="Teleop proxy not initialized")
 
         try:
             rospy.wait_for_service('/teleop_fetch/receive_grant', timeout=5.0)
             res = self.teleop_grant_proxy(grant_payload=grant_payload, signature=signature)
             if res.success:
+                append_dashboard_event(
+                    "rospy_x402",
+                    "help_forward_ok",
+                    "Grant forwarded to teleop_fetch",
+                    {"task_id": req.task_id or ""},
+                )
                 return RequestHelpResponse(success=True, message="Grant received and forwarded to teleop successfully")
-            else:
-                return RequestHelpResponse(success=False, message=f"Teleop rejected grant: {res.message}")
+            append_dashboard_event(
+                "rospy_x402",
+                "help_forward_fail",
+                (res.message or "teleop rejected")[:200],
+                {"task_id": req.task_id or ""},
+            )
+            return RequestHelpResponse(success=False, message=f"Teleop rejected grant: {res.message}")
         except rospy.ServiceException as e:
             msg = f"Failed to forward grant to teleop_fetch: {e}"
             logger.error(msg)
+            append_dashboard_event(
+                "rospy_x402",
+                "help_forward_fail",
+                msg[:200],
+                {"task_id": req.task_id or ""},
+            )
             return RequestHelpResponse(success=False, message=msg)
 
 
@@ -165,6 +202,17 @@ class EscalationManager:
         else:
             logger.info("RAID teleop/help status=%s", response.status_code)
 
+        help_id = self._help_request_id(data)
+        append_dashboard_event(
+            "rospy_x402",
+            "help_raid_post_ok",
+            "RAID POST teleop/help accepted",
+            {
+                "help_request_id": help_id or "",
+                "task_id": event.get("task_id", "") or "",
+            },
+        )
+
         try:
             claim = self._maybe_obtain_peaq_claim(data)
             if claim:
@@ -181,9 +229,14 @@ class EscalationManager:
         signed = extract_signed_grant_from_raid_help_response(data)
         if signed:
             logger.info("Using signed SessionGrant from RAID teleop/help response.")
+            append_dashboard_event(
+                "rospy_x402",
+                "grant_inline_ok",
+                "Signed grant in RAID help response",
+                {"help_request_id": help_id or "", "task_id": event.get("task_id", "") or ""},
+            )
             return signed[0], signed[1]
 
-        help_id = self._help_request_id(data)
         if help_id and rospy.get_param("~raid_session_grant_poll", True):
             timeout_sec = float(rospy.get_param("~raid_session_grant_timeout_sec", 300.0))
             interval_sec = float(rospy.get_param("~raid_session_grant_interval_sec", 2.0))
@@ -201,9 +254,21 @@ class EscalationManager:
                     "Using signed SessionGrant from RAID GET session-grant (helpRequestId=%s).",
                     help_id,
                 )
+                append_dashboard_event(
+                    "rospy_x402",
+                    "grant_poll_ok",
+                    "Signed grant from RAID session-grant poll",
+                    {"help_request_id": help_id, "task_id": event.get("task_id", "") or ""},
+                )
                 return payload, sig
             except ValueError as e:
                 logger.error("RAID session-grant poll failed: %s", e)
+                append_dashboard_event(
+                    "rospy_x402",
+                    "grant_poll_fail",
+                    str(e)[:200],
+                    {"help_request_id": help_id, "task_id": event.get("task_id", "") or ""},
+                )
                 raise
 
         # Fallback until RAID returns inline grant or session-grant works (see DOC).
@@ -218,6 +283,16 @@ class EscalationManager:
 
         payload_str = json.dumps(grant)
         dummy_sig = "dummy_signature_base58_encoded"
+
+        append_dashboard_event(
+            "rospy_x402",
+            "grant_mock_fallback",
+            "Using local mock grant (pending_from_raid); not suitable for production payment",
+            {
+                "help_request_id": self._help_request_id(data) or "",
+                "task_id": event.get("task_id", "") or "",
+            },
+        )
 
         return payload_str, dummy_sig
 
