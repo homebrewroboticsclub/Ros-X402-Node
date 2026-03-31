@@ -1,4 +1,17 @@
 # Local env with secrets — do not commit
 .env
-*.pyc
+*.py[cod]
 __pycache__/
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+*.log

@@ -1,7 +1,10 @@
 import getpass
+import logging
 import os
 from dataclasses import dataclass
 from typing import Optional
+
+_logger = logging.getLogger(__name__)
 
 from nacl import exceptions as nacl_exceptions
 from nacl.signing import SigningKey
@@ -32,11 +35,19 @@ class KeyManager:
         self._key_material: Optional[KeyMaterial] = None
 
     def load_from_env(self, env_var: str = "SOLANA_PRIVATE_KEY") -> Optional[KeyMaterial]:
-        """Load key from environment. Returns None if not set or empty."""
+        """Load key from environment. Returns None if not set, empty, or invalid base58."""
         secret_b58 = (os.environ.get(env_var) or "").strip()
         if not secret_b58:
             return None
-        key_material = self.load_from_base58(secret_b58)
+        try:
+            key_material = self.load_from_base58(secret_b58)
+        except ValueError as exc:
+            _logger.warning(
+                "Ignoring invalid %s from environment (%s). Unset it, fix base58, or use launch/env.",
+                env_var,
+                exc,
+            )
+            return None
         self._key_material = key_material
         return key_material
 

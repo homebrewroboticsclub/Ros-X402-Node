@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   std_srvs
+  KYR
 )
 
 ## System dependencies are found with CMake's conventions
@@ -57,6 +58,8 @@ catkin_python_setup()
 add_service_files(
   FILES
   x402_buy_service.srv
+  RequestHelp.srv
+  CompleteTeleopPayment.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -199,4 +202,6 @@ install(DIRECTORY launch/
 # endif()
 
 ## Add folders to be run by python nosetests
-# catkin_add_nosetests(test)
+if(CATKIN_ENABLE_TESTING)
+  catkin_add_nosetests(test)
+endif()
