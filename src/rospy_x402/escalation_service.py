@@ -9,6 +9,7 @@ from rospy_x402.srv import RequestHelp, RequestHelpResponse
 
 from rospy_x402.raid_peaq_client import extract_peaq_claim_object, fetch_peaq_claim
 from rospy_x402.raid_teleop_grant import extract_signed_grant_from_raid_help_response
+from rospy_x402.raid_session_grant_client import poll_raid_session_grant
 from rospy_x402.teleop_operator_payment import pay_operator_from_receipt_payload
 
 # Try to import teleop_fetch services if available, fallback otherwise
@@ -182,7 +183,30 @@ class EscalationManager:
             logger.info("Using signed SessionGrant from RAID teleop/help response.")
             return signed[0], signed[1]
 
-        # Fallback until RAID returns teleopGrantPayload + teleopGrantSignature (see DOC).
+        help_id = self._help_request_id(data)
+        if help_id and rospy.get_param("~raid_session_grant_poll", True):
+            timeout_sec = float(rospy.get_param("~raid_session_grant_timeout_sec", 300.0))
+            interval_sec = float(rospy.get_param("~raid_session_grant_interval_sec", 2.0))
+            try:
+                payload, sig, _signer = poll_raid_session_grant(
+                    self.raid_app_url,
+                    self.robot_id,
+                    self.teleop_secret,
+                    help_id,
+                    data,
+                    timeout_sec=timeout_sec,
+                    interval_sec=interval_sec,
+                )
+                logger.info(
+                    "Using signed SessionGrant from RAID GET session-grant (helpRequestId=%s).",
+                    help_id,
+                )
+                return payload, sig
+            except ValueError as e:
+                logger.error("RAID session-grant poll failed: %s", e)
+                raise
+
+        # Fallback until RAID returns inline grant or session-grant works (see DOC).
         grant = {
             "session_id": self._help_request_id(data) or str(uuid.uuid4()),
             "robot_id": self.robot_id,

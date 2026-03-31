@@ -36,6 +36,8 @@ RAID **не** обязан реализовывать on-chain логику Sola
 
 HTTP **200** или **201**; **401** при неверном секрете.
 
+**Двухфазная выдача (актуально для `x402_raid_app`):** сразу после `POST …/teleop/help` грант с **реальным** `operator_pubkey` может **ещё не существовать** (оператор не нажал Accept). Тогда в ответе help есть **`id`** / **`helpRequest.id`** и опционально **`teleopGrantPollUrl`**. Робот (`rospy_x402`) **поллит** `GET …/teleop/session-grant?helpRequestId=…` до **200** с `teleopGrantPayload` + `teleopGrantSignature` или до таймаута. Подробности и ошибки `404` (`grant_not_ready`, `grant_unconfigured`, `grant_absent`): [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md).
+
 ### 2.1 Обязательные для полного цикла поля
 
 Робот ищет грант в корне JSON или внутри `helpRequest` / `help_request` (вложенный объект сливается с корнем для поиска полей).

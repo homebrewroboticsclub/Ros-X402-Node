@@ -23,6 +23,7 @@ rospy_x402/
 │   ├── raid_integration.py       # RAID enroll, state file, operator allowlist JSON
 │   ├── escalation_service.py     # teleop/help to RAID, signed grant parse (raid_teleop_grant), RequestHelp, peaq claim
 │   ├── raid_teleop_grant.py      # extract teleopGrantPayload + signature from RAID JSON
+│   ├── raid_session_grant_client.py # poll GET …/teleop/session-grant after help (RAID Accept)
 │   ├── teleop_operator_payment.py # SOL to operator from KYR receipt (shared with complete_teleop_payment)
 │   ├── raid_peaq_client.py       # HTTP GET peaq claim from RAID (see DOC/PEAQ_RAID_CLAIM.md)
 │   ├── demo_actions.py           # Demo callables (move_demo, buy_cola_demo, shoot_demo)

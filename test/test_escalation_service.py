@@ -10,6 +10,8 @@ from rospy_x402.escalation_service import EscalationManager
 def _claim_off_get_param(name, default=None):
     if name == "~raid_peaq_claim_enabled":
         return False
+    if name == "~raid_session_grant_poll":
+        return False
     return default
 
 
