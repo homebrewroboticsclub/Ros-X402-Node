@@ -7,3 +7,11 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+*.log

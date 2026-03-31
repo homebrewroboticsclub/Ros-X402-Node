@@ -334,12 +334,12 @@ def main() -> None:
             "export ROBOT_FLEET_ENROLLMENT_SECRET / RAID_* before roslaunch."
         )
 
-    # rosparam > env RAID_APP_URL > static IP (mDNS often breaks in Docker / some LANs)
+    # rosparam > env RAID_APP_URL > mDNS default (override via launch or .env if mDNS недоступен)
     raid_app_url = (rospy.get_param("~raid_app_url", "") or "").strip()
     if not raid_app_url:
         raid_app_url = (os.environ.get("RAID_APP_URL") or "").strip()
     if not raid_app_url:
-        raid_app_url = "http://192.168.20.53:3000"
+        raid_app_url = "http://raid-app.local:3000"
     state_path = (
         (os.environ.get("RAID_STATE_FILE") or "").strip()
         or (rospy.get_param("~raid_state_file", "") or "").strip()
