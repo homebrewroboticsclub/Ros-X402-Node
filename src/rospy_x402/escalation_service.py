@@ -157,6 +157,21 @@ class EscalationManager:
             )
             return RequestHelpResponse(success=False, message=msg)
 
+    @staticmethod
+    def _merge_teleop_correlation_into_metadata(metadata: Dict[str, Any]) -> None:
+        """Optional DATA_NODE correlation (see br-vr-dev-sinc DOC/RAID_APP_DATA_NODE_CORRELATION_SPEC.md)."""
+        try:
+            ds = rospy.get_param("/dataset_recorder/active_dataset_id", "")
+            if ds:
+                metadata["dataset_id"] = str(ds)
+            ks = rospy.get_param("/teleop_fetch/current_kyr_session_id", "")
+            if ks:
+                metadata["kyr_session_id"] = str(ks)
+            rid = rospy.get_param("/kyr_proxy/robot_id", "")
+            if rid:
+                metadata["kyr_robot_id"] = str(rid)
+        except Exception:
+            pass
 
     def _request_grant_from_raid(self, event: Dict[str, Any]) -> Tuple[str, str]:
         """
@@ -180,6 +195,7 @@ class EscalationManager:
                 "situation_report": event.get("situation_report", ""),
             },
         }
+        self._merge_teleop_correlation_into_metadata(payload["metadata"])
         if rospy.get_param("~raid_send_kyr_peaq_context", True):
             kyr_ctx = self._kyr_peaq_context_dict(event)
             if kyr_ctx is not None:
