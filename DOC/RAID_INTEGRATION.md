@@ -6,7 +6,28 @@ HTTP contracts on the RAID side are described in the `x402_raid_app` repository.
 
 1. **Enroll (A)** — `POST /api/robots/enroll` with fleet secret; response has `id` (robot UUID) and `teleopSecret`. Repeating with the same `enrollmentKey` updates the row; `id` stays stable.
 2. **Help (B)** — `POST /api/robots/{robotId}/teleop/help` with `X-Robot-Teleop-Secret` (implemented in `EscalationManager`). JSON body and `metadata.situation_report`: [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md).
-3. **Push allowlist (optional)** — RAID calls the **exact** URL from `operatorRegistryUrl` on sync: `POST` with header `X-Raid-To-Robot-Secret` and body `{"allowedTeleoperatorIds": ["uuid", ...]}`. External spec: `ROBOT_OPERATOR_SYNC.md` in RAID.
+3. **Push allowlist + DATA_NODE batch config (optional)** — RAID calls the **exact** URL from `operatorRegistryUrl` on sync: `POST` with header `X-Raid-To-Robot-Secret`. Body is a JSON object that **must** include at least one of:
+   - **`allowedTeleoperatorIds`** (array of UUID strings) — updates `~/.ros/raid_operator_allowlist.json` (same as before).
+   - **`dataNodeSync`** (object) — merges into **`~/.kyr/data_node_sync_settings.json`** for the KYR background batch uploader (see [DATA_NODE_SYNC.md](../../br-kyr/DOC/DATA_NODE_SYNC.md) §4 and [DATA_NODE_INGEST_AND_EVENTS_SPEC.md](../../br-vr-dev-sinc/DOC/DATA_NODE_INGEST_AND_EVENTS_SPEC.md)).
+
+   RAID may send **both** in one POST (recommended when the task router updates operator list and DATA_NODE endpoint/token together). Sending **only** `dataNodeSync` is valid (e.g. DATA_NODE migration without touching allowlist). Sending **only** `allowedTeleoperatorIds` remains valid.
+
+   **`dataNodeSync` fields (camelCase, all optional except as noted):**
+
+   | Field | Maps to `data_node_sync_settings.json` | Notes |
+   |------|----------------------------------------|--------|
+   | `baseUrl` | `base_url` | Required for a useful sync; no trailing slash. |
+   | `batchPath` | `batch_path` | Default on robot `/v1/ingest/robot-events`. |
+   | `enabled` | `enabled` | When `true`, worker may upload (still subject to interval). |
+   | `authHeaderName` | `auth_header_name` | e.g. `Authorization`. |
+   | `authHeaderValue` | `auth_header_value` | If omitted or empty, existing token on disk is **kept** (rotation: send new value). |
+   | `intervalSec` | `interval_sec` | Clamped 60–86400 on save. |
+   | `raidRobotUuid` | `raid_robot_uuid` | Batch envelope. |
+   | `includeDashboardEvents`, `includeAuditEvents`, `includeStateUsbSnapshot`, `includeKyrIncidents` | `include_*` | Booleans. |
+
+   **Enroll response:** RAID **may** include the same **`dataNodeSync`** object on **`POST /api/robots/enroll`** (200). The robot applies it after saving `id` / `teleopSecret`. Re-enroll or a push with a new `baseUrl` updates the robot without manual UI entry.
+
+   External operator-sync narrative: `ROBOT_OPERATOR_SYNC.md` in RAID (`x402_raid_app`); extend that doc to describe `dataNodeSync` for implementers.
 
 If RAID has **no** `ROBOT_FLEET_ENROLLMENT_SECRET`, enroll returns **503** — server configuration.
 

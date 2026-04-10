@@ -273,17 +273,34 @@ class X402RestServer:
                     )
                     return
                 try:
-                    ids = raid_integration.parse_operator_sync_body(payload)
-                    raid_integration.save_operator_allowlist(allow_path, ids)
+                    ids_opt, dn_opt = raid_integration.parse_raid_robot_push_body(
+                        payload
+                    )
                 except ValueError as exc:
                     self._send_json(
                         HTTPStatus.BAD_REQUEST,
                         {"error": str(exc)},
                     )
                     return
+                if ids_opt is not None:
+                    raid_integration.save_operator_allowlist(allow_path, ids_opt)
+                if dn_opt is not None:
+                    try:
+                        from kyr.data_node_sync_settings import apply_raid_data_node_sync
+
+                        apply_raid_data_node_sync(dn_opt)
+                        rospy.loginfo("DATA_NODE batch sync settings applied from RAID push")
+                    except ImportError:
+                        rospy.logwarn(
+                            "DATA_NODE sync from RAID skipped (KYR package not importable)"
+                        )
                 self._send_json(
                     HTTPStatus.OK,
-                    {"status": "ok", "count": len(ids)},
+                    {
+                        "status": "ok",
+                        "allowlistCount": len(ids_opt) if ids_opt is not None else None,
+                        "dataNodeSyncApplied": dn_opt is not None,
+                    },
                 )
 
             @staticmethod

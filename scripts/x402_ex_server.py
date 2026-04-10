@@ -423,6 +423,19 @@ def main() -> None:
                 raid_robot_id, raid_teleop_secret = parse_enroll_credentials(data)
                 save_raid_state(state_path, raid_robot_id, raid_teleop_secret)
                 rospy.loginfo("RAID enroll ok; credentials saved to %s", state_path)
+                dns = data.get("dataNodeSync") if isinstance(data, dict) else None
+                if isinstance(dns, dict):
+                    try:
+                        from kyr.data_node_sync_settings import apply_raid_data_node_sync
+
+                        apply_raid_data_node_sync(dns)
+                        rospy.loginfo(
+                            "DATA_NODE batch sync settings applied from RAID enroll response"
+                        )
+                    except ImportError:
+                        rospy.logwarn(
+                            "DATA_NODE sync from enroll skipped (KYR package not importable)"
+                        )
             except Exception as exc:  # pylint: disable=broad-except
                 rospy.logerr("RAID enroll failed: %s", exc)
 

@@ -16,6 +16,7 @@ from rospy_x402.raid_integration import (
     normalized_sync_path,
     parse_enroll_credentials,
     parse_operator_sync_body,
+    parse_raid_robot_push_body,
     post_robot_enroll,
     save_operator_allowlist,
     save_raid_state,
@@ -64,6 +65,32 @@ class TestRaidIntegration(unittest.TestCase):
         self.assertEqual(ids, ["x", "y"])
         with self.assertRaises(ValueError):
             parse_operator_sync_body({})
+
+    def test_parse_raid_robot_push_body_allowlist_only(self):
+        ids, dns = parse_raid_robot_push_body({"allowedTeleoperatorIds": ["a"]})
+        self.assertEqual(ids, ["a"])
+        self.assertIsNone(dns)
+
+    def test_parse_raid_robot_push_body_data_node_only(self):
+        ids, dns = parse_raid_robot_push_body(
+            {"dataNodeSync": {"baseUrl": "https://dn.example", "enabled": True}}
+        )
+        self.assertIsNone(ids)
+        self.assertEqual(dns["baseUrl"], "https://dn.example")
+
+    def test_parse_raid_robot_push_body_both(self):
+        ids, dns = parse_raid_robot_push_body(
+            {
+                "allowedTeleoperatorIds": ["u1"],
+                "dataNodeSync": {"batchPath": "/v1/x"},
+            }
+        )
+        self.assertEqual(ids, ["u1"])
+        self.assertEqual(dns["batchPath"], "/v1/x")
+
+    def test_parse_raid_robot_push_body_rejects_empty(self):
+        with self.assertRaises(ValueError):
+            parse_raid_robot_push_body({})
 
     def test_save_operator_allowlist(self):
         with tempfile.TemporaryDirectory() as d:
