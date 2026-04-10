@@ -26,10 +26,11 @@ except ImportError:
     SetPeaqDatasetClaim = None  # type: ignore
 
 try:
-    from KYR.srv import CloseSession, GetPeaqIssuanceMetadata
+    from KYR.srv import CloseSession, GetPeaqIssuanceMetadata, ReportIncident
 except ImportError:
     CloseSession = None  # type: ignore
     GetPeaqIssuanceMetadata = None  # type: ignore
+    ReportIncident = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,15 @@ class EscalationManager:
             except Exception as e:
                 logger.warning("SetPeaqDatasetClaim proxy not created: %s", e)
 
+        self._report_incident_proxy = None
+        if ReportIncident is not None:
+            try:
+                self._report_incident_proxy = rospy.ServiceProxy(
+                    "/kyr/report_incident", ReportIncident
+                )
+            except Exception as e:
+                logger.warning("ReportIncident proxy not created: %s", e)
+
     def handle_request_help(self, req) -> RequestHelpResponse:
         """
         ROS Service handler for manual escalation.
@@ -103,6 +113,8 @@ class EscalationManager:
             f"RAID help requested (task_id={req.task_id})",
             {"task_id": req.task_id or ""},
         )
+
+        self._record_kyr_incident_for_help(req)
 
         # Step 1 & 2: Call RAID_APP (Synchronous for simplicity here, could be async)
         try:
@@ -156,6 +168,44 @@ class EscalationManager:
                 {"task_id": req.task_id or ""},
             )
             return RequestHelpResponse(success=False, message=msg)
+
+    def _record_kyr_incident_for_help(self, req) -> None:
+        """Append ~/.kyr/incidents.jsonl via KYR /kyr/report_incident (DATA_NODE kyr_incident batch)."""
+        if self._report_incident_proxy is None:
+            return
+        try:
+            rospy.wait_for_service("/kyr/report_incident", timeout=2.0)
+        except rospy.ROSException:
+            logger.warning("KYR /kyr/report_incident not available; incident not recorded")
+            return
+        during = False
+        try:
+            during = bool(
+                str(rospy.get_param("/teleop_fetch/current_kyr_session_id", "") or "").strip()
+            )
+        except Exception:
+            pass
+        payload = {
+            "task_id": req.task_id or "",
+            "error_context": req.error_context or "",
+            "situation_report": req.situation_report or "",
+        }
+        tid = (req.task_id or "unknown")[:120]
+        try:
+            ri = self._report_incident_proxy(
+                severity="warning",
+                category="teleop_help",
+                summary="Operator help requested (task_id=%s)" % tid,
+                payload_json=json.dumps(payload, ensure_ascii=True),
+                operator_help_requested=True,
+                during_teleop=during,
+                linked_kyr_session_id="",
+                linked_dataset_id="",
+            )
+            if not ri.success:
+                logger.warning("KYR report_incident: %s", ri.message or "failed")
+        except rospy.ServiceException as e:
+            logger.warning("KYR report_incident call failed: %s", e)
 
     @staticmethod
     def _merge_teleop_correlation_into_metadata(metadata: Dict[str, Any]) -> None:
