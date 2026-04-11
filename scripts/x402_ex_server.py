@@ -484,9 +484,34 @@ def main() -> None:
     ) -> CompleteTeleopPaymentResponse:
         rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
         flat = float(rospy.get_param("~teleop_operator_payment_flat_sol", 0.0))
-        ok, msg, sig = pay_operator_from_receipt_payload(
-            rest_server.x402_client, req.receipt_payload, rate, flat_sol=flat
+        abnormal_frac = float(rospy.get_param("~teleop_operator_abnormal_payment_fraction", 0.5))
+        ok, msg, sig, amount_sol = pay_operator_from_receipt_payload(
+            rest_server.x402_client,
+            req.receipt_payload,
+            rate,
+            flat_sol=flat,
+            abnormal_payment_fraction=abnormal_frac,
         )
+        try:
+            import json as _json
+
+            from kyr.dashboard_events import append_dashboard_event
+
+            rec = _json.loads(req.receipt_payload or "{}")
+            closure = str(rec.get("closure_reason", "") or "")
+            append_dashboard_event(
+                "rospy_x402",
+                "teleop_operator_payment",
+                (msg or "")[:200],
+                {
+                    "success": bool(ok),
+                    "payment_signature": (sig or "")[:256],
+                    "amount_sol": float(amount_sol),
+                    "closure_reason": closure[:200],
+                },
+            )
+        except Exception:
+            pass
         return CompleteTeleopPaymentResponse(ok, msg, sig)
 
     rospy.Service(
