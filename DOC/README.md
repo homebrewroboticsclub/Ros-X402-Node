@@ -1,6 +1,6 @@
 # rospy_x402 — documentation index
 
-Package documentation lives in **`DOC/`**. Root [README.md](../README.md) links here.
+Package documentation lives in **`DOC/`**. Root [README.md](../README.md) is the human-oriented guide; [DEV_AI.md](../DEV_AI.md) is the agent entry point for this repository (with links to **`br_bringup`** and peers).
 
 ## REST server and code architecture
 
