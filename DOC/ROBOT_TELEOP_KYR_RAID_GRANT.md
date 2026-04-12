@@ -102,11 +102,19 @@ X-Robot-Teleop-Secret: <secret>
 
 | error | When |
 |-------|------|
-| `grant_not_ready` | Request still open (operator not accepted) |
+| `grant_not_ready` | Request is still **open** (no operator accept yet), **or** the help request was returned to **open** and grant fields were **cleared** (e.g. operator **`decline-before-connect`** after accept but before **`/ws/teleop/session/{sessionId}`**). **Also:** if your poller previously received **200** with a grant, then sees **`grant_not_ready`**, you must **invalidate any cached `teleopGrantPayload` / signature** and keep polling until a **fresh 200** — the old `session_id` in the discarded grant must not be used for KYR. |
 | `grant_unconfigured` | RAID missing `TELEOP_GRANT_SIGNING_SECRET_KEY` |
 | `grant_absent` | Operator has no `wallet_public_key` in RAID DB |
 
-Robot strategy: after help, **poll** `session-grant` with backoff until 200 or product timeout.
+Robot strategy: after help, **poll** `session-grant` with backoff until 200 or product timeout. Treat **`grant_not_ready` after a prior 200** as **grant revoked** until the next **200**.
+
+### 4.4 `poll_raid_session_grant` and cache / race notes
+
+**Shipped robot behavior (`rospy_x402`):** `poll_raid_session_grant` runs in a **single synchronous loop** and returns on the **first** **200** that includes a valid `teleopGrantPayload` + signature pair. It does **not** keep polling after success, so it does **not** retain a stale grant across subsequent GETs in that call.
+
+**Stateful pollers or custom caches:** if your integration **stores** payload/signature after a **200**, you **must** drop that cache when a later GET returns **`grant_not_ready`** (see table above).
+
+**Race after poll returns:** there is a small window between **return from `poll_raid_session_grant`** and **`/teleop_fetch/receive_grant` → KYR `open_session`** where the operator could **`decline-before-connect`** on RAID. The grant may still verify cryptographically until expiry while RAID has already cleared its row — product risk is **low**; tightening would require an extra **`GET …/session-grant`** immediately before `open_session` (not implemented by default).
 
 ---
 
@@ -134,7 +142,7 @@ Expected fields (**JSON names from RAID**):
 | `task_id` | From `metadata.task_id` on help (may be empty) |
 | `operator_pubkey` | **Solana base58** SOL recipient |
 | `valid_until_sec` | Grant expiry Unix time |
-| `scope_json` | JSON string (policy; RAID may add payment hints) |
+| `scope_json` | JSON string (policy). RAID may add **`teleop_payment_mode` / `teleop_operator_flat_sol`** hints for other consumers; **`rospy_x402` does not parse them** — use **`operator_payment_sol`** on the grant or rosparams for payout (see [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md) §2.4). |
 
 If **`operator_pubkey`** is missing or equals the mock placeholder — do **not** expect on-chain operator payment from `complete_teleop_payment`.
 
@@ -164,6 +172,7 @@ Expect non-empty base58, not `pending_from_raid`.
 ## 8. Checklist before escalating to RAID team
 
 - [ ] After **accept**, `GET session-grant` returns **200** with non-empty `teleopGrantPayload` and `teleopGrantSignature`.
+- [ ] Poller **drops cached grant** when **`grant_not_ready`** appears after a prior **200** (operator may have **decline-before-connect**).
 - [ ] Parsed payload **`operator_pubkey`** is valid Solana.
 - [ ] KYR **`trusted_raid_keys`** includes **`grantSignerPublicKey`** from RAID.
 - [ ] KYR **`open_session`** runs **after** receiving this grant with **these** payload/signature, not mock-only.

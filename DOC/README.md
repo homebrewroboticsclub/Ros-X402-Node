@@ -26,9 +26,9 @@ Package documentation lives in **`DOC/`**. Root [README.md](../README.md) is the
 
 - [RAID_INTEGRATION.md](RAID_INTEGRATION.md) — fleet secret, enroll, persistence, operator sync, `x402_ex_server` parameters.
 - [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md) — `POST …/teleop/help` contract for RAID developers (including `situation_report`).
-- [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md) — RAID response: signed SessionGrant, Solana `operator_pubkey`, post-payment on robot (`/x402/complete_teleop_payment`).
+- [RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md](RAID_APP_TELEOP_HELP_FULL_CYCLE_X402_SPEC.md) — RAID response: signed SessionGrant, Solana `operator_pubkey`, operator lifecycle (§2.5), `scope_json` vs `operator_payment_sol`, post-payment on robot (`/x402/complete_teleop_payment`).
 - [RAID_TELEOP_SESSION_FAILURE_AND_PAYMENT_SPEC.md](RAID_TELEOP_SESSION_FAILURE_AND_PAYMENT_SPEC.md) — operator loss, `closure_reason`, interim **50%** payment on abnormal close; **no mandatory RAID API change**.
-- [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md) — RAID response order **help → Accept → GET session-grant**; robot polling in `raid_session_grant_client` + `EscalationManager`. Escalation events (help start, RAID POST, grant poll, forward to `teleop_fetch`, errors) are also written to **`~/.kyr/dashboard_events.jsonl`** for the KYR web dashboard (see `br-kyr/DOC/BLACKBOX_DASHBOARD.md`).
+- [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md) — RAID response order **help → Accept → GET session-grant**; **`grant_not_ready`** after revoke; `poll_raid_session_grant` + `EscalationManager` (§4.4 race note). Escalation events are written to **`~/.kyr/dashboard_events.jsonl`** (see `br-kyr/DOC/BLACKBOX_DASHBOARD.md`).
 - [PEAQ_RAID_CLAIM.md](PEAQ_RAID_CLAIM.md) — Peaq claim via RAID: KYR context, HTTP GET, merge into dataset; specs under `br-vr-dev-sinc/DOC/`.
 
 ---

@@ -2,6 +2,7 @@
 
 **Audience:** RAID App team (`x402_raid_app` or equivalent), product and backend.  
 **Robot:** package `rospy_x402` (`EscalationManager`, node `x402_ex_server`).  
+**Robot developer (step order, KYR, `pending_from_raid`):** [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md).  
 **Related:** [RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md) (request body), [RAID_INTEGRATION.md](RAID_INTEGRATION.md), [../br-kyr/DOC/ROSBRIDGE_AND_RAID.md](../../br-kyr/DOC/ROSBRIDGE_AND_RAID.md).
 
 ## Goal
@@ -72,6 +73,19 @@ If there is no signed grant, the robot stays on **fallback**: local mock Session
 - `id` or `helpRequest.id` — as today, for Peaq claim and tracking.
 - `duplicate: true` on duplicate delivery of the same request — as today.
 
+### 2.4 When the operator is assigned (RAID App behavior)
+
+In current RAID the operator is fixed only after **`POST /api/teleoperator/help-requests/{id}/accept`**. The **signed grant** is usually **not** in the first **`POST …/teleop/help`** response: the robot polls **`GET /api/robots/{robotId}/teleop/session-grant?helpRequestId=`** (same **`X-Robot-Teleop-Secret`**) until **`teleopGrantPayload`** / **`teleopGrantSignature`**, or uses §2.2 fallback while the request is open or signing is unconfigured.
+
+**Payment fields on the robot:** payout amount is determined only from the **signed SessionGrant / SignedReceipt** and **`x402_server` rosparams** — see the **Payment amount** bullets at the top of this document. In particular, **`operator_payment_sol`** in the SessionGrant (optional) is copied into the receipt and overrides flat and per-second rules.
+
+**`scope_json` hints (RAID-only convention):** RAID MAY embed **`teleop_payment_mode`**: **`flat`**, **`teleop_operator_flat_sol`** (e.g. aligned with env **`TELEOP_OPERATOR_FLAT_SOL`**) inside **`scope_json`** for UI or other consumers. **`rospy_x402` does not read those keys**; to steer the robot payout from RAID, set numeric **`operator_payment_sol`** on the grant or rely on operator defaults in launch (`teleop_operator_payment_flat_sol`, `teleop_operator_payment_sol_per_sec`).
+
+### 2.5 Operator lifecycle on RAID (grant invalidation and HTTP end)
+
+- **`POST /api/teleoperator/sessions/{sessionId}/decline-before-connect`** (operator JWT): allowed only **before** the operator opens **`/ws/teleop/session/{sessionId}`** (RAID has not set **`robot_proxy_connected_at`**). RAID ends the teleop session row, returns the help request to **`open`**, clears **`teleop_grant_payload` / `teleop_grant_signature`**, and excludes that operator from seeing this help request again. The robot’s poller will get **`grant_not_ready`** again — it must **discard any cached SessionGrant** and wait for **200** after the next accept. See [ROBOT_TELEOP_KYR_RAID_GRANT.md](ROBOT_TELEOP_KYR_RAID_GRANT.md) §4.3 and §4.4.
+- **`POST /api/teleoperator/sessions/{sessionId}/end`** with body **`{ "reason": "<enum>" }`** (same JWT): allowed after the proxy path has connected (**`robot_proxy_connected_at`** set). RAID closes the help request and stores **`operator_end_reason`**; it may close the operator WebSocket. **SOL settlement** (full / partial / none vs. reason) remains on the **robot**: KYR **`close_session`**, receipt, **`/x402/complete_teleop_payment`**. VR and robot session teardown: [../br-vr-dev-sinc/DOC/TELEOP_SESSION_LIFECYCLE_AND_FAILURES.md](../br-vr-dev-sinc/DOC/TELEOP_SESSION_LIFECYCLE_AND_FAILURES.md).
+
 ---
 
 ## 3. SessionGrant schema (JSON inside `teleopGrantPayload`)
@@ -128,6 +142,9 @@ sequenceDiagram
     participant T as teleop_fetch
 
     R->>RAID: POST teleop/help + metadata
+    RAID-->>R: helpRequest id (poll session-grant after accept)
+    Note over RAID: operator accepts
+    R->>RAID: GET session-grant?helpRequestId=
     RAID-->>R: teleopGrantPayload + teleopGrantSignature
     R->>T: receive_grant(payload, sig)
     T->>KYR: open_session
@@ -144,10 +161,34 @@ sequenceDiagram
 
 ## 6. RAID checklist
 
+0. Set **`TELEOP_GRANT_SIGNING_SECRET_KEY`** in RAID (separate Solana keypair for grant signing; not the robot payer wallet). Else **`GET …/teleop/session-grant`** may return **`grant_unconfigured`** and the robot stays on the mock grant (§2.2).
 1. Store and inject operator **Solana base58** from DB into the grant.
 2. Issue a **signed** grant (option A or B).
-3. Publish the grant signer **Ed25519 public key** for KYR `trusted_raid_keys`.
+3. Publish the grant signer **Ed25519 public key** for KYR `trusted_raid_keys` (in production **`GET /health`** → **`teleopGrantSignerPublicKey`**).
 4. Persist `situation_report` and request context for operator UI/API ([RAID_APP_TELEOP_HELP_SPEC.md](RAID_APP_TELEOP_HELP_SPEC.md)).
 5. On “end help”, call rosbridge service **`/teleop_fetch/end_session`** with a meaningful `reason` (otherwise billing may not run if the operator does not double-tap L_Y on Quest).
 
 After RAID implements this, the robot stops using the mock grant for those responses and can pay the operator in SOL when the session ends.
+
+---
+
+## 7. Troubleshooting: `pending_from_raid` in receipt / “NO on-chain transfer”
+
+Messages like **`No valid operator Solana pubkey in receipt`** / **`pending_from_raid`** mean **KYR did not record a real `operator_pubkey` from RAID’s signed grant** in **SignedReceipt**. It **does not** mean RAID sends stale data in `POST …/teleop/help`: that response often has no grant yet (no operator).
+
+**Typical causes:**
+
+1. **Step order on robot:** KYR `open_session` ran with a **mock grant** before the robot finished **`GET …/teleop/session-grant`** after operator **accept**. Fix: after polling obtains **`teleopGrantPayload`** + **`teleopGrantSignature`**, pass them to KYR **`open_session`**, then teleop.
+2. **Grant signature not trusted on KYR:** RAID signer pubkey must be in **`trusted_raid_keys`** on the robot. Compare **`GET /health`** on RAID → **`teleopGrantSignerPublicKey`**, or **`grantSignerPublicKey`** in **`GET …/teleop/session-grant`**. Without this KYR may reject the grant and stay on fallback.
+3. **`grant_absent` on RAID:** operator has empty **`wallet_public_key`** in DB — grant is not signed.
+
+**Check from a workstation** (substitute `robotId`, secret, `helpRequestId` after accept):
+
+```bash
+curl -sS -H "X-Robot-Teleop-Secret: <secret>" \
+  "https://<raid-host>/api/robots/<robotId>/teleop/session-grant?helpRequestId=<uuid>"
+```
+
+Parsed **`teleopGrantPayload`** must contain **`operator_pubkey`** as operator base58 wallet (not `pending_from_raid`).
+
+When grant signing is configured, **`POST …/teleop/help`** may include **`teleopGrantPollUrl`** — relative path ready for polling after accept.
