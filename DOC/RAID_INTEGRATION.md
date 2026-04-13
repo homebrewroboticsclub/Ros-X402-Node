@@ -47,6 +47,8 @@ On RAID enroll is **idempotent**: same key updates the same row, **`id` unchange
 
 If the robot **does not** call enroll (credentials from launch or state) but you rotated secrets or deleted the robot on RAID, the old `teleopSecret` in state may be invalid — set new values in launch/env or delete state and restart the node while RAID is reachable (with correct `ROBOT_FLEET_ENROLLMENT_SECRET`).
 
+**Manual re-enroll from the robot UI:** the KYR Black Box **Services registration** tab can run the same `POST /api/robots/enroll` flow via **`POST /api/services_registration/manual_enroll`** (writes `raid_robot_state.json`; restart `x402_ex_server` afterward). See [BLACKBOX_DASHBOARD.md](../../br-kyr/DOC/BLACKBOX_DASHBOARD.md) and [SERVICES_REGISTRATION_ROBOT.md](../../br_bringup/DOC/SERVICES_REGISTRATION_ROBOT.md).
+
 ### RAID unreachable
 
 | Situation | Behaviour |
