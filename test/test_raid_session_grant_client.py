@@ -62,6 +62,38 @@ class TestPollSessionGrant(unittest.TestCase):
         self.assertEqual(s, "sig58")
         self.assertIn("RaidSigner", signer or "")
 
+    @patch("rospy_x402.raid_session_grant_client.requests.get")
+    def test_incomplete_200_then_grant_not_ready_then_success(self, mock_get):
+        """200 without payload+sig continues loop; grant_not_ready then full 200 succeeds."""
+        incomplete = MagicMock()
+        incomplete.status_code = 200
+        incomplete.json.return_value = {"status": "ok"}  # no teleopGrantPayload
+        not_ready = MagicMock()
+        not_ready.status_code = 404
+        not_ready.json.return_value = {"error": "grant_not_ready"}
+        ready = MagicMock()
+        ready.status_code = 200
+        ready.json.return_value = {
+            "teleopGrantPayload": '{"session_id":"s2","operator_pubkey":"Op222222222222222222222222222222222222222"}',
+            "teleopGrantSignature": "sig_final",
+            "grantSignerPublicKey": "RaidSigner22222222222222222222222222222222",
+        }
+        mock_get.side_effect = [incomplete, not_ready, ready]
+
+        p, s, signer = poll_raid_session_grant(
+            "http://raid:3000",
+            "rid",
+            "sec",
+            "hid",
+            {},
+            timeout_sec=5.0,
+            interval_sec=0.01,
+        )
+        self.assertIn("session_id", p)
+        self.assertEqual(s, "sig_final")
+        self.assertIn("RaidSigner2222", signer or "")
+        self.assertEqual(mock_get.call_count, 3)
+
 
 if __name__ == "__main__":
     unittest.main()

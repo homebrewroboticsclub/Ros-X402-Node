@@ -36,6 +36,11 @@ The robot sends an object like:
 | `metadata.error_context` | yes | String (often JSON) with machine-readable error details; may be empty. |
 | `metadata.situation_report` | **new**, recommended | Free UTF-8 text: **current robot state**, **recent actions**, **why a teleoperator is needed**. May be long (thousands of chars). Old clients may omit the key — treat as `""`. |
 | `metadata.kyr_peaq_context` | **new**, optional | JSON object from KYR for peaq claim binding on RAID (see `br-vr-dev-sinc/DOC/RAID_APP_PEAQ_CLAIM_SPEC.md`). If absent — do not fail. |
+| `metadata.dataset_id` | optional | Active dataset / record id from the robot recorder (DATA_NODE correlation). |
+| `metadata.kyr_session_id` | optional | Current KYR teleop session id when help is requested during teleop. |
+| `metadata.kyr_robot_id` | optional | KYR string robot id (`kyr_proxy` param `~robot_id`). |
+
+See `br-vr-dev-sinc/DOC/RAID_APP_DATA_NODE_CORRELATION_SPEC.md` (RAID persistence) and `br-vr-dev-sinc/DOC/DATA_NODE_INGEST_AND_EVENTS_SPEC.md` (DATA_NODE storage).
 
 ## RAID-side work
 

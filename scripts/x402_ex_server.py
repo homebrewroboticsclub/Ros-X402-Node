@@ -423,6 +423,19 @@ def main() -> None:
                 raid_robot_id, raid_teleop_secret = parse_enroll_credentials(data)
                 save_raid_state(state_path, raid_robot_id, raid_teleop_secret)
                 rospy.loginfo("RAID enroll ok; credentials saved to %s", state_path)
+                dns = data.get("dataNodeSync") if isinstance(data, dict) else None
+                if isinstance(dns, dict):
+                    try:
+                        from kyr.data_node_sync_settings import apply_raid_data_node_sync
+
+                        apply_raid_data_node_sync(dns)
+                        rospy.loginfo(
+                            "DATA_NODE batch sync settings applied from RAID enroll response"
+                        )
+                    except ImportError:
+                        rospy.logwarn(
+                            "DATA_NODE sync from enroll skipped (KYR package not importable)"
+                        )
             except Exception as exc:  # pylint: disable=broad-except
                 rospy.logerr("RAID enroll failed: %s", exc)
 
@@ -471,9 +484,34 @@ def main() -> None:
     ) -> CompleteTeleopPaymentResponse:
         rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
         flat = float(rospy.get_param("~teleop_operator_payment_flat_sol", 0.0))
-        ok, msg, sig = pay_operator_from_receipt_payload(
-            rest_server.x402_client, req.receipt_payload, rate, flat_sol=flat
+        abnormal_frac = float(rospy.get_param("~teleop_operator_abnormal_payment_fraction", 0.5))
+        ok, msg, sig, amount_sol = pay_operator_from_receipt_payload(
+            rest_server.x402_client,
+            req.receipt_payload,
+            rate,
+            flat_sol=flat,
+            abnormal_payment_fraction=abnormal_frac,
         )
+        try:
+            import json as _json
+
+            from kyr.dashboard_events import append_dashboard_event
+
+            rec = _json.loads(req.receipt_payload or "{}")
+            closure = str(rec.get("closure_reason", "") or "")
+            append_dashboard_event(
+                "rospy_x402",
+                "teleop_operator_payment",
+                (msg or "")[:200],
+                {
+                    "success": bool(ok),
+                    "payment_signature": (sig or "")[:256],
+                    "amount_sol": float(amount_sol),
+                    "closure_reason": closure[:200],
+                },
+            )
+        except Exception:
+            pass
         return CompleteTeleopPaymentResponse(ok, msg, sig)
 
     rospy.Service(

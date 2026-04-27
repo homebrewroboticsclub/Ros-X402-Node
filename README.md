@@ -8,6 +8,10 @@
 
 All runtime logs and comments are in English, while the ROS package name follows the project requirements.
 
+## Ecosystem entry point
+
+**Full robot stack (KYR + x402 + VR teleop), RAID configuration, and common commands** — metapackage **`br_bringup`**: **[../br_bringup/README.md](../br_bringup/README.md)**. **Agent index (whole workspace):** **[../br_bringup/DEV_AI.md](../br_bringup/DEV_AI.md)**. **This package (agents):** **[DEV_AI.md](DEV_AI.md)**.
+
 ## Features
 
 - **Configurable HTTP endpoints**: Define REST routes, link them to Python callables, and attach payment requirements through JSON configs.
@@ -533,6 +537,7 @@ After `configure`, use the printed `rosservice call /x402_buy_service ...` with 
 
 ## Documentation
 
+- **[DEV_AI.md](DEV_AI.md)** — agent context (stack links, documentation responsibilities)
 - **[DOC/README.md](DOC/README.md)** — documentation index by functional area
 - **[DOC/ARCHITECTURE.md](DOC/ARCHITECTURE.md)** — components, data flow, extension points
 - **[DOC/X402_PROTOCOL.md](DOC/X402_PROTOCOL.md)** — x402 V2 (402 response, discovery, verification, config)

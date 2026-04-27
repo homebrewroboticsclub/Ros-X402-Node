@@ -209,6 +209,33 @@ def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
                 pass
 
 
+def parse_raid_robot_push_body(
+    body: Dict[str, Any],
+) -> Tuple[Optional[List[str]], Optional[Dict[str, Any]]]:
+    """
+    RAID -> robot POST body (operator allowlist + optional DATA_NODE batch config).
+    At least one of allowedTeleoperatorIds or dataNodeSync must be present.
+    """
+    ids_opt: Optional[List[str]] = None
+    if "allowedTeleoperatorIds" in body:
+        raw = body["allowedTeleoperatorIds"]
+        if not isinstance(raw, list):
+            raise ValueError("allowedTeleoperatorIds must be a list")
+        ids_opt = [str(x).strip() for x in raw if str(x).strip()]
+    dn_opt: Optional[Dict[str, Any]] = None
+    if "dataNodeSync" in body:
+        dns = body["dataNodeSync"]
+        if dns is None:
+            dn_opt = None
+        elif isinstance(dns, dict):
+            dn_opt = dns
+        else:
+            raise ValueError("dataNodeSync must be a JSON object")
+    if ids_opt is None and dn_opt is None:
+        raise ValueError("Expected allowedTeleoperatorIds and/or dataNodeSync")
+    return ids_opt, dn_opt
+
+
 def parse_operator_sync_body(body: Dict[str, Any]) -> List[str]:
     raw = body.get("allowedTeleoperatorIds")
     if raw is None:
