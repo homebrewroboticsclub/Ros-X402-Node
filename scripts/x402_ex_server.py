@@ -12,28 +12,44 @@ from typing import Dict, Optional
 import rospkg
 import rospy
 
-# Load .env before reading RPC/key so env vars are available in main()
+# Paths of .env files successfully merged (last file wins per key). Set at import time.
+_DOTENV_LOADED_PATHS: list = []
+_DOTENV_IMPORT_FAILED: bool = False
+
+
 def _load_dotenv() -> None:
+    """
+    Merge several optional .env files (override=True in order — later wins).
+    Do not stop at the first file: an empty ~/.env must not block package .env.
+    """
+    global _DOTENV_LOADED_PATHS, _DOTENV_IMPORT_FAILED
     try:
         from dotenv import load_dotenv
     except ImportError:
+        _DOTENV_IMPORT_FAILED = True
         return
-    paths = [
-        os.path.join(os.getcwd(), ".env"),
-        os.path.join(os.path.expanduser("~"), ".rospy_x402.env"),
-    ]
+
+    env_file = os.environ.get("ROSPY_X402_ENV_FILE", "").strip()
+    ordered: list = []
     try:
         rospack = rospkg.RosPack()
         pkg_path = rospack.get_path("rospy_x402")
-        # Prefer package root .env (next to .env.example), then config/.env
-        paths.insert(0, os.path.join(pkg_path, ".env"))
-        paths.insert(0, os.path.join(pkg_path, "config", ".env"))
+        ordered.append(os.path.join(pkg_path, "config", ".env"))
+        ordered.append(os.path.join(pkg_path, ".env"))
     except (rospkg.ResourceNotFound, rospkg.ROSPkgException):
         pass
-    for path in paths:
-        if os.path.isfile(path):
-            load_dotenv(path, override=False)
-            break
+    ordered.append(os.path.join(os.getcwd(), ".env"))
+    ordered.append(os.path.join(os.path.expanduser("~"), ".rospy_x402.env"))
+    if env_file:
+        ordered.append(env_file)
+
+    seen = set()
+    for path in ordered:
+        if not path or path in seen or not os.path.isfile(path):
+            continue
+        seen.add(path)
+        load_dotenv(path, override=True)
+        _DOTENV_LOADED_PATHS.append(path)
 
 
 _load_dotenv()
@@ -48,11 +64,28 @@ from rospy_x402.x402 import (
     X402Error,
 )
 from rospy_x402.srv import (
+    CompleteTeleopPayment,
+    CompleteTeleopPaymentRequest,
+    CompleteTeleopPaymentResponse,
     x402_buy_service,
     x402_buy_serviceRequest,
     x402_buy_serviceResponse,
 )
+from rospy_x402.teleop_operator_payment import pay_operator_from_receipt_payload
 
+
+from rospy_x402.escalation_service import EscalationManager
+from rospy_x402.raid_integration import (
+    build_operator_registry_url,
+    credentials_from_state,
+    default_allowlist_path,
+    default_state_path,
+    enroll_robot,
+    load_raid_state,
+    normalized_sync_path,
+    parse_enroll_credentials,
+    save_raid_state,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("x402_ex_server")
@@ -140,6 +173,14 @@ class X402BuyServiceHandler:
                     error_message=str(exc),
                     payment_signature="",
                 )
+            endpoint = (request.endpoint or "").strip()
+            if not endpoint:
+                return x402_buy_serviceResponse(
+                    success=True,
+                    response_body="",
+                    error_message="",
+                    payment_signature=signature,
+                )
         else:
             receiver_account = self._receiver_account or (self._x402_client.public_key or "")
             if not receiver_account:
@@ -187,7 +228,7 @@ class X402BuyServiceHandler:
 
         try:
             response_body = _http_request(
-                url=request.endpoint,
+                url=(request.endpoint or "").strip(),
                 method=request.method or "GET",
                 payload=request.payload,
                 headers=self._inject_signature_header(headers, signature),
@@ -248,7 +289,7 @@ def main() -> None:
     helius_key = (os.environ.get("HELIUS_API_KEY") or "").strip()
     if helius_key:
         default_rpc = f"https://mainnet.helius-rpc.com/?api-key={helius_key}"
-    rpc_endpoint = rospy.get_param("~solana_rpc_endpoint", default_rpc)
+    rpc_endpoint = (rospy.get_param("~solana_rpc_endpoint", "") or "").strip() or default_rpc
     rospy.loginfo("Solana RPC: %s", rpc_endpoint.split("?")[0] + ("... (Helius)" if "helius" in rpc_endpoint.lower() else ""))
 
     key_manager = KeyManager()
@@ -278,6 +319,137 @@ def main() -> None:
     if rest_server.facilitator_url:
         rospy.loginfo("Configured external facilitator at %s", rest_server.facilitator_url)
 
+    if _DOTENV_IMPORT_FAILED:
+        rospy.logwarn(
+            "python3-dotenv is not installed; .env files are ignored. "
+            "Install: sudo apt install python3-dotenv"
+        )
+    elif _DOTENV_LOADED_PATHS:
+        rospy.loginfo("rospy_x402 dotenv merged from: %s", " | ".join(_DOTENV_LOADED_PATHS))
+    else:
+        rospy.logwarn(
+            "No .env file found for rospy_x402 (package config/.env and .env, cwd .env, "
+            "~/.rospy_x402.env, ROSPY_X402_ENV_FILE). "
+            "Either copy .env.example to the package .env on this machine, or "
+            "export ROBOT_FLEET_ENROLLMENT_SECRET / RAID_* before roslaunch."
+        )
+
+    # rosparam > env RAID_APP_URL > mDNS default (override via launch or .env if mDNS is unavailable)
+    raid_app_url = (rospy.get_param("~raid_app_url", "") or "").strip()
+    if not raid_app_url:
+        raid_app_url = (os.environ.get("RAID_APP_URL") or "").strip()
+    if not raid_app_url:
+        raid_app_url = "http://raid-app.local:3000"
+    state_path = (
+        (os.environ.get("RAID_STATE_FILE") or "").strip()
+        or (rospy.get_param("~raid_state_file", "") or "").strip()
+        or default_state_path()
+    )
+    allowlist_path = (
+        (os.environ.get("RAID_ALLOWLIST_FILE") or "").strip()
+        or (rospy.get_param("~raid_allowlist_file", "") or "").strip()
+        or default_allowlist_path(state_path)
+    )
+    fleet_secret = (
+        (os.environ.get("ROBOT_FLEET_ENROLLMENT_SECRET") or "").strip()
+        or (rospy.get_param("~robot_fleet_enrollment_secret", "") or "").strip()
+    )
+    enroll_key = (
+        (os.environ.get("RAID_ENROLLMENT_KEY") or "").strip()
+        or (rospy.get_param("~raid_enrollment_key", "") or "").strip()
+    )
+    raid_to_robot_secret = (
+        (os.environ.get("RAID_TO_ROBOT_SECRET") or "").strip()
+        or (rospy.get_param("~raid_to_robot_secret", "") or "").strip()
+    )
+    sync_path = normalized_sync_path(
+        rospy.get_param("~raid_operator_sync_path", "/raid/operator-allowlist")
+    )
+
+    listen_port = int(rest_server._server_config.listen_port)
+    enroll_http_port = int(rospy.get_param("~raid_enroll_http_port", listen_port))
+    enroll_host = (
+        (rospy.get_param("~raid_enroll_host", "") or "").strip()
+        or (os.environ.get("RAID_ENROLL_HOST") or "").strip()
+    )
+
+    registry_url = None
+    if raid_to_robot_secret and enroll_host:
+        registry_url = build_operator_registry_url(
+            enroll_host, enroll_http_port, sync_path
+        )
+
+    raid_robot_id = (
+        (rospy.get_param("~raid_robot_id", "") or "").strip()
+        or (os.environ.get("RAID_ROBOT_ID") or "").strip()
+    )
+    raid_teleop_secret = (
+        (rospy.get_param("~raid_teleop_secret", "") or "").strip()
+        or (os.environ.get("RAID_TELEOP_SECRET") or "").strip()
+    )
+
+    if not raid_robot_id or not raid_teleop_secret:
+        saved = load_raid_state(state_path)
+        if saved:
+            creds = credentials_from_state(saved)
+            if creds:
+                raid_robot_id, raid_teleop_secret = creds
+                rospy.loginfo("Loaded RAID credentials from %s", state_path)
+
+    if (not raid_robot_id or not raid_teleop_secret) and fleet_secret and enroll_key:
+        if not enroll_host:
+            rospy.logerr(
+                "RAID auto-enroll skipped: set ~raid_enroll_host or RAID_ENROLL_HOST "
+                "(LAN-reachable address for RAID HTTP health)."
+            )
+        else:
+            rb_host = (rospy.get_param("~raid_enroll_rosbridge_host", "") or "").strip()
+            if not rb_host:
+                rb_host = enroll_host
+            rb_port = int(rospy.get_param("~raid_enroll_rosbridge_port", 9090))
+            robot_name = (rospy.get_param("~raid_robot_name", "") or "").strip() or None
+            try:
+                data = enroll_robot(
+                    raid_app_url,
+                    fleet_secret,
+                    enroll_key,
+                    enroll_host,
+                    enroll_http_port,
+                    rosbridge_host=rb_host,
+                    rosbridge_port=rb_port,
+                    name=robot_name,
+                    operator_registry_url=registry_url,
+                )
+                raid_robot_id, raid_teleop_secret = parse_enroll_credentials(data)
+                save_raid_state(state_path, raid_robot_id, raid_teleop_secret)
+                rospy.loginfo("RAID enroll ok; credentials saved to %s", state_path)
+            except Exception as exc:  # pylint: disable=broad-except
+                rospy.logerr("RAID enroll failed: %s", exc)
+
+    if not raid_robot_id or not raid_teleop_secret:
+        rospy.logwarn(
+            "RAID credentials still missing: teleop/help will fail until you set "
+            "~raid_robot_id + ~raid_teleop_secret, or enroll (fleet secret + "
+            "RAID_ENROLLMENT_KEY + RAID_ENROLL_HOST in env and reachable %s), "
+            "or place id/teleopSecret in %s.",
+            raid_app_url,
+            state_path,
+        )
+
+    if raid_to_robot_secret:
+        rest_server.raid_operator_sync_path = sync_path
+        rest_server.raid_to_robot_secret = raid_to_robot_secret
+        rest_server.raid_allowlist_file = allowlist_path
+        rospy.loginfo(
+            "RAID operator sync enabled at POST %s (allowlist file %s)",
+            sync_path,
+            allowlist_path,
+        )
+    else:
+        rest_server.raid_operator_sync_path = None
+        rest_server.raid_to_robot_secret = None
+        rest_server.raid_allowlist_file = None
+
     try:
         rest_server.start()
     except Exception as exc:  # pylint: disable=broad-except
@@ -293,6 +465,34 @@ def main() -> None:
     )
 
     rospy.Service("x402_buy_service", x402_buy_service, buy_handler)
+
+    def _complete_teleop_payment_cb(
+        req: CompleteTeleopPaymentRequest,
+    ) -> CompleteTeleopPaymentResponse:
+        rate = float(rospy.get_param("~teleop_operator_payment_sol_per_sec", 1e-6))
+        flat = float(rospy.get_param("~teleop_operator_payment_flat_sol", 0.0))
+        ok, msg, sig = pay_operator_from_receipt_payload(
+            rest_server.x402_client, req.receipt_payload, rate, flat_sol=flat
+        )
+        return CompleteTeleopPaymentResponse(ok, msg, sig)
+
+    rospy.Service(
+        "/x402/complete_teleop_payment",
+        CompleteTeleopPayment,
+        _complete_teleop_payment_cb,
+    )
+
+    try:
+        escalation_manager = EscalationManager(
+            raid_app_url=raid_app_url,
+            robot_id=raid_robot_id,
+            teleop_secret=raid_teleop_secret,
+            x402_client=rest_server.x402_client,
+        )
+        rospy.loginfo("EscalationManager initialized.")
+    except Exception as exc:  # pylint: disable=broad-except
+        rospy.logwarn("EscalationManager failed to initialize: %s", exc)
+
     rospy.loginfo("Loaded x402 key. Public key: %s", key_material.public_key_b58)
     rospy.loginfo("x402_ex_server node started")
 

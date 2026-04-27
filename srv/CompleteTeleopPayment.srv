@@ -1,0 +1,7 @@
+# After KYR /kyr/close_session: pay assigned teleoperator in SOL via the robot x402 wallet
+# (same code path as x402_buy_service outgoing transfer).
+string receipt_payload
+---
+bool success
+string message
+string payment_signature

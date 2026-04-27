@@ -1,3 +1,4 @@
+import hmac
 import importlib
 import inspect
 import json
@@ -24,8 +25,15 @@ from .x402.schema import (
     build_bazaar_extension,
     build_resource_entry,
 )
+from . import raid_integration
 
 logger = logging.getLogger(__name__)
+
+
+def _header_secrets_equal(received: str, expected: str) -> bool:
+    if len(received) != len(expected):
+        return False
+    return hmac.compare_digest(received.encode("utf-8"), expected.encode("utf-8"))
 
 
 class X402RestServer:
@@ -43,6 +51,9 @@ class X402RestServer:
         self._thread: Optional[threading.Thread] = None
         self._x402_client = X402Client(rpc_endpoint=rpc_endpoint)
         self._facilitator_url = self._server_config.facilitator_url
+        self.raid_operator_sync_path: Optional[str] = None
+        self.raid_to_robot_secret: Optional[str] = None
+        self.raid_allowlist_file: Optional[str] = None
 
     def start(self) -> None:
         if self._httpd:
@@ -129,6 +140,15 @@ class X402RestServer:
                 if path == "/.well-known/x402" and method == "GET":
                     doc = server._get_discovery_document(host)
                     self._send_json(HTTPStatus.OK, doc)
+                    return
+
+                if (
+                    method == "POST"
+                    and server.raid_operator_sync_path
+                    and server.raid_to_robot_secret
+                    and path == server.raid_operator_sync_path
+                ):
+                    self._handle_raid_operator_sync(server)
                     return
 
                 endpoint = endpoint_map.get((path, method))
@@ -228,11 +248,56 @@ class X402RestServer:
                 truncated = text[: self._max_log_payload] + "...<truncated>"
                 return truncated
 
+            def _handle_raid_operator_sync(self, srv: "X402RestServer") -> None:
+                got = (self.headers.get("X-Raid-To-Robot-Secret") or "").strip()
+                expected = (srv.raid_to_robot_secret or "").strip()
+                if not _header_secrets_equal(got, expected):
+                    self._send_json(
+                        HTTPStatus.UNAUTHORIZED,
+                        {"error": "Invalid or missing X-Raid-To-Robot-Secret"},
+                    )
+                    return
+                allow_path = srv.raid_allowlist_file
+                if not allow_path:
+                    self._send_json(
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                        {"error": "Allowlist path not configured"},
+                    )
+                    return
+                try:
+                    payload = self._parse_body()
+                except ValueError as exc:
+                    self._send_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": f"Invalid JSON payload: {exc}"},
+                    )
+                    return
+                try:
+                    ids = raid_integration.parse_operator_sync_body(payload)
+                    raid_integration.save_operator_allowlist(allow_path, ids)
+                except ValueError as exc:
+                    self._send_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": str(exc)},
+                    )
+                    return
+                self._send_json(
+                    HTTPStatus.OK,
+                    {"status": "ok", "count": len(ids)},
+                )
+
             @staticmethod
             def _sanitize_headers(headers) -> Dict[str, str]:
+                sensitive = {
+                    "authorization",
+                    "proxy-authorization",
+                    "x-raid-to-robot-secret",
+                    "x-robot-fleet-secret",
+                    "x-robot-teleop-secret",
+                }
                 masked_headers: Dict[str, str] = {}
                 for key, value in headers.items():
-                    if key.lower() in {"authorization", "proxy-authorization"}:
+                    if key.lower() in sensitive:
                         masked_headers[key] = "***redacted***"
                     else:
                         masked_headers[key] = value

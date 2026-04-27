@@ -144,6 +144,12 @@ class X402Client:
             )
 
         lamports = int(amount_sol * LAMPORTS_PER_SOL)
+        
+        # Prevent sending 0 lamports (e.g. for free test sessions or short errors)
+        if lamports <= 0:
+            logger.info(f"Skipping x402 payment: amount {amount_sol} SOL is too small or zero.")
+            return "skipped_zero_amount"
+
         sender = SolanaTransactionSender(self._rpc.endpoint)
         response = sender.transfer_lamports(
             keypair_secret=self._key_material.secret_key_64,
@@ -154,11 +160,24 @@ class X402Client:
         signature = response.get("result")
         if not signature:
             raise PaymentSubmissionError("Solana RPC did not return a transaction signature.")
+        # solana-py returns solders.signature.Signature; ROS string fields need str or ascii bytes.
+        if isinstance(signature, bytes):
+            signature_str = signature.decode("ascii", errors="strict")
+        elif isinstance(signature, str):
+            signature_str = signature
+        else:
+            signature_str = str(signature)
+        try:
+            signature_str.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise PaymentSubmissionError(
+                "Transaction signature must be ASCII for ROS interoperability."
+            ) from exc
         logger.info(
             "Sent x402 payment signature=%s destination=%s amount=%s lamports",
-            signature,
+            signature_str,
             destination,
             lamports,
         )
-        return signature
+        return signature_str
 
